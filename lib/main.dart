@@ -16,15 +16,15 @@ class StudyChatApp extends StatelessWidget {
 
   final AppState state;
 
-  static const _seed = Color(0xFF4C6B4A);
+  static const _seed = Color(0xFF4D6BFE);
 
   ThemeData _light() {
     final scheme = ColorScheme.fromSeed(seedColor: _seed).copyWith(
-      surface: const Color(0xFFF4F6EC),
-      surfaceContainerHighest: const Color(0xFFE2E8D8),
-      primaryContainer: const Color(0xFFDCE7D1),
-      onSurface: const Color(0xFF1F241C),
-      outlineVariant: const Color(0xFFCBD3C2),
+      surface: const Color(0xFFEEF2FA),
+      surfaceContainerHighest: const Color(0xFFDFE6F5),
+      primaryContainer: const Color(0xFFDCE4FF),
+      onSurface: const Color(0xFF0F1A30),
+      outlineVariant: const Color(0xFFC6D0E4),
     );
     return _base(scheme);
   }
@@ -35,10 +35,10 @@ class StudyChatApp extends StatelessWidget {
           seedColor: _seed,
           brightness: Brightness.dark,
         ).copyWith(
-          surface: const Color(0xFF151A14),
-          surfaceContainerHighest: const Color(0xFF2A3228),
-          primaryContainer: const Color(0xFF2F3D2C),
-          outlineVariant: const Color(0xFF3D473A),
+          surface: const Color(0xFF0A1222),
+          surfaceContainerHighest: const Color(0xFF16203A),
+          primaryContainer: const Color(0xFF1B2A4D),
+          outlineVariant: const Color(0xFF27334B),
         );
     return _base(scheme);
   }

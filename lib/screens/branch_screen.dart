@@ -4,6 +4,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../widgets/composer.dart';
 import '../widgets/rich_text.dart';
+import '../widgets/streaming_text.dart';
 
 class BranchScreen extends StatefulWidget {
   const BranchScreen({
@@ -174,10 +175,9 @@ class _BranchScreenState extends State<BranchScreen> {
                                                 ),
                                           )
                                         : null,
-                                    child: RichMessage(
-                                      text: message.text,
-                                      streaming: message.streaming,
-                                    ),
+                                    child: message.streaming
+                                        ? StreamingText(text: message.text)
+                                        : RichMessage(text: message.text),
                                   ),
                                 ),
                               ),

@@ -6,6 +6,7 @@ import '../app_state.dart';
 import '../models.dart';
 import '../widgets/composer.dart';
 import '../widgets/rich_text.dart';
+import '../widgets/streaming_text.dart';
 import 'branch_screen.dart';
 import 'settings_screen.dart';
 
@@ -314,11 +315,10 @@ class _MessageTile extends StatelessWidget {
                     if (message.text.trim().isNotEmpty)
                       const SizedBox(height: 8),
                   ],
-                  if (message.text.trim().isNotEmpty || message.streaming)
-                    RichMessage(
-                      text: message.text,
-                      streaming: message.streaming,
-                    ),
+                  if (message.streaming)
+                    StreamingText(text: message.text)
+                  else if (message.text.trim().isNotEmpty)
+                    RichMessage(text: message.text),
                 ],
               ),
             ),
