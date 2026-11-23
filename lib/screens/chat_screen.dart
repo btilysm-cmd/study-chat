@@ -121,6 +121,91 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _openOptions() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setSheet) {
+            final conversation = widget.conversation;
+            final scheme = Theme.of(context).colorScheme;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '对话设置',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      '回答长度',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: scheme.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'short', label: Text('短')),
+                        ButtonSegment(value: 'medium', label: Text('中')),
+                        ButtonSegment(value: 'long', label: Text('长')),
+                      ],
+                      selected: {conversation.answerLength},
+                      onSelectionChanged: (value) {
+                        widget.state.setAnswerLength(conversation, value.first);
+                        setSheet(() {});
+                      },
+                    ),
+                    const SizedBox(height: 18),
+                    Text(
+                      '思考等级',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: scheme.onSurface.withOpacity(0.5),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<String>(
+                      segments: const [
+                        ButtonSegment(value: 'none', label: Text('无')),
+                        ButtonSegment(value: 'low', label: Text('低')),
+                        ButtonSegment(value: 'high', label: Text('高')),
+                        ButtonSegment(value: 'max', label: Text('最高')),
+                      ],
+                      selected: {conversation.thinking},
+                      onSelectionChanged: (value) {
+                        widget.state.setThinking(conversation, value.first);
+                        setSheet(() {});
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      '只对这条对话生效：长度会作为隐藏提示随问题提交，思考等级作为请求参数。',
+                      style: TextStyle(
+                        fontSize: 12,
+                        height: 1.5,
+                        color: scheme.onSurface.withOpacity(0.45),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Future<void> _openBranches() async {
     final conversation = widget.conversation;
     final navigator = Navigator.of(context);
@@ -198,6 +283,11 @@ class _ChatScreenState extends State<ChatScreen> {
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
             ),
             actions: [
+              IconButton(
+                tooltip: '回答设置',
+                icon: const Icon(Icons.tune),
+                onPressed: _openOptions,
+              ),
               Badge(
                 isLabelVisible: conversation.branches.isNotEmpty,
                 label: Text('${conversation.branches.length}'),

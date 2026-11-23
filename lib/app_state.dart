@@ -95,7 +95,7 @@ class AppState extends ChangeNotifier {
 
   void _tick() {
     if (_flush != null) return;
-    _flush = Timer(const Duration(milliseconds: 50), () {
+    _flush = Timer(const Duration(milliseconds: 80), () {
       _flush = null;
       notifyListeners();
     });
@@ -130,10 +130,13 @@ class AppState extends ChangeNotifier {
       final history = await _apiHistory(current, conversation);
       live.text = '';
       notifyListeners();
+      final system =
+          '$_mainSystem\n\n${_lengthHint(conversation.answerLength)}';
       await for (final delta in api.streamChat(
         config: current,
         messages: history,
-        system: _mainSystem,
+        system: system,
+        reasoningEffort: conversation.thinking,
       )) {
         live.text += delta;
         _tick();
@@ -247,7 +250,8 @@ class AppState extends ChangeNotifier {
         messages: [
           {'role': 'user', 'content': prompt},
         ],
-        system: _branchSystem,
+        system: '$_branchSystem\n\n${_lengthHint(conversation.answerLength)}',
+        reasoningEffort: conversation.thinking,
       )) {
         live.text += delta;
         _tick();
@@ -266,6 +270,18 @@ class AppState extends ChangeNotifier {
       notifyListeners();
       unawaited(_persist());
     }
+  }
+
+  void setAnswerLength(Conversation conversation, String value) {
+    conversation.answerLength = value;
+    notifyListeners();
+    unawaited(_persist());
+  }
+
+  void setThinking(Conversation conversation, String value) {
+    conversation.thinking = value;
+    notifyListeners();
+    unawaited(_persist());
   }
 
   Future<void> deleteConversation(Conversation conversation) async {

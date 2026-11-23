@@ -171,6 +171,8 @@ class Conversation {
     DateTime? updatedAt,
     List<ChatMessage>? messages,
     List<Branch>? branches,
+    this.answerLength = 'medium',
+    this.thinking = 'high',
   }) : createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now(),
        messages = messages ?? [],
@@ -183,6 +185,8 @@ class Conversation {
   DateTime updatedAt;
   List<ChatMessage> messages;
   List<Branch> branches;
+  String answerLength;
+  String thinking;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -192,6 +196,8 @@ class Conversation {
     'updatedAt': updatedAt.millisecondsSinceEpoch,
     'messages': messages.map((message) => message.toJson()).toList(),
     'branches': branches.map((branch) => branch.toJson()).toList(),
+    'answerLength': answerLength,
+    'thinking': thinking,
   };
 
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
@@ -210,6 +216,8 @@ class Conversation {
     branches: ((json['branches'] as List?) ?? const [])
         .map((item) => Branch.fromJson(item as Map<String, dynamic>))
         .toList(),
+    answerLength: json['answerLength'] as String? ?? 'medium',
+    thinking: json['thinking'] as String? ?? 'high',
   );
 }
 

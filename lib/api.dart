@@ -35,6 +35,7 @@ class ApiClient {
     required ApiConfig config,
     required List<Map<String, dynamic>> messages,
     required String system,
+    String? reasoningEffort,
   }) async* {
     final uri = Uri.parse('${config.root}/chat/completions');
     final request = http.Request('POST', uri)
@@ -49,6 +50,8 @@ class ApiClient {
           ...messages,
         ],
         'stream': true,
+        if (reasoningEffort != null && reasoningEffort.isNotEmpty)
+          'reasoning_effort': reasoningEffort,
       });
 
     final response = await _client.send(request);
