@@ -52,3 +52,12 @@ v0.1 不引入完整 Markdown 引擎，`rich_text.dart` 自己处理：
 3. 导出/导入（沿用 DSH 迁移包的 zip + restore 思路）；
 4. Markdown 表格/标题；
 5. 真机性能优化（长列表、公式缓存）。
+
+
+## v0.2：图片 / 文件 / 视觉模型
+
+- 默认模型改为 `deepseek-flash`（支持图片输入），设置里可选 `deepseek-v4-pro`。
+- 输入框「+」：拍照、相册、文件（PDF / Word / PPT / 文本）。
+- 图片以 base64 `image_url` 直接发给模型；文本文件读取后作为文本块；PDF / Word / PPT 先 `POST /files`（`text_recognition`）拿 `file_id`，再以 `file` 块引用。
+- 流式渲染：50ms 节流、Markdown 解析结果缓存、流式阶段纯文本渲染，减少卡顿。
+- Agora 风格配色：浅鼠尾草背景、圆角胶囊输入框、圆形发送键、模型胶囊。

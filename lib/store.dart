@@ -9,6 +9,7 @@ import 'models.dart';
 
 class Store {
   static const _apiKeyName = 'study_chat_api_key';
+  static const defaultModel = 'deepseek-flash';
 
   final FlutterSecureStorage _secure = const FlutterSecureStorage();
 
@@ -46,10 +47,13 @@ class Store {
       key = '';
     }
     if (config == null && key.isEmpty) return null;
+    var model = config?['model'] as String? ?? defaultModel;
+    if (model == 'deepseek-chat' || model == 'deepseek-reasoner')
+      model = defaultModel;
     return ApiConfig(
       baseUrl: config?['baseUrl'] as String? ?? 'https://api.deepseek.com',
       apiKey: key,
-      model: config?['model'] as String? ?? 'deepseek-chat',
+      model: model,
     );
   }
 
@@ -77,5 +81,16 @@ class Store {
     final doc = await _read();
     doc['conversations'] = conversations.map((item) => item.toJson()).toList();
     await _write(doc);
+  }
+
+  Future<Attachment> importAttachment(String sourcePath, String name) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final target = Directory('${dir.path}/attachments');
+    if (!target.existsSync()) await target.create(recursive: true);
+    final safeName = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    final path =
+        '${target.path}/${DateTime.now().microsecondsSinceEpoch}_$safeName';
+    await File(sourcePath).copy(path);
+    return Attachment(path: path, name: name, mime: mimeForName(name));
   }
 }

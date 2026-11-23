@@ -1,28 +1,38 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
-class RichMessage extends StatelessWidget {
+class RichMessage extends StatefulWidget {
   const RichMessage({super.key, required this.text, this.streaming = false});
 
   final String text;
   final bool streaming;
 
   @override
+  State<RichMessage> createState() => _RichMessageState();
+}
+
+class _RichMessageState extends State<RichMessage> {
+  String? _cachedText;
+  List<Widget>? _cachedBlocks;
+
+  @override
   Widget build(BuildContext context) {
-    final body = text.trim();
-    if (streaming) {
-      return SelectionArea(
-        child: Text(
-          body.isEmpty ? '…' : body,
-          style: const TextStyle(fontSize: 15.5, height: 1.65),
-        ),
+    final body = widget.text.trim();
+    if (widget.streaming) {
+      return Text(
+        body.isEmpty ? '…' : body,
+        style: const TextStyle(fontSize: 15.5, height: 1.65),
       );
     }
     if (body.isEmpty) return const SizedBox.shrink();
+    if (_cachedText != body || _cachedBlocks == null) {
+      _cachedText = body;
+      _cachedBlocks = _blocks(context, body);
+    }
     return SelectionArea(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: _blocks(context, body),
+        children: _cachedBlocks!,
       ),
     );
   }
@@ -50,24 +60,30 @@ void _appendText(BuildContext context, List<Widget> widgets, String chunk) {
     _appendParagraph(context, widgets, chunk.substring(last, match.start));
     final tex = (match.group(1) ?? '').trim();
     if (tex.isNotEmpty) {
-      widgets.add(Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Math.tex(
-            tex,
-            mathStyle: MathStyle.display,
-            textStyle: const TextStyle(fontSize: 16),
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Math.tex(
+              tex,
+              mathStyle: MathStyle.display,
+              textStyle: const TextStyle(fontSize: 16),
+            ),
           ),
         ),
-      ));
+      );
     }
     last = match.end;
   }
   _appendParagraph(context, widgets, chunk.substring(last));
 }
 
-void _appendParagraph(BuildContext context, List<Widget> widgets, String chunk) {
+void _appendParagraph(
+  BuildContext context,
+  List<Widget> widgets,
+  String chunk,
+) {
   final text = chunk.trim();
   if (text.isEmpty) return;
   final inline = RegExp(r'\$([^$\n]+?)\$');
@@ -78,26 +94,30 @@ void _appendParagraph(BuildContext context, List<Widget> widgets, String chunk) 
       spans.add(TextSpan(text: text.substring(last, match.start)));
     }
     final tex = (match.group(1) ?? '').trim();
-    spans.add(WidgetSpan(
-      alignment: PlaceholderAlignment.middle,
-      child: Math.tex(
-        tex,
-        mathStyle: MathStyle.text,
-        textStyle: const TextStyle(fontSize: 15.5),
+    spans.add(
+      WidgetSpan(
+        alignment: PlaceholderAlignment.middle,
+        child: Math.tex(
+          tex,
+          mathStyle: MathStyle.text,
+          textStyle: const TextStyle(fontSize: 15.5),
+        ),
       ),
-    ));
+    );
     last = match.end;
   }
   if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
-  widgets.add(Padding(
-    padding: const EdgeInsets.only(bottom: 6),
-    child: Text.rich(
-      TextSpan(
-        style: const TextStyle(fontSize: 15.5, height: 1.65),
-        children: spans,
+  widgets.add(
+    Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Text.rich(
+        TextSpan(
+          style: const TextStyle(fontSize: 15.5, height: 1.65),
+          children: spans,
+        ),
       ),
     ),
-  ));
+  );
 }
 
 Widget _codeBlock(BuildContext context, String code) {
@@ -106,8 +126,8 @@ Widget _codeBlock(BuildContext context, String code) {
     margin: const EdgeInsets.symmetric(vertical: 8),
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
-      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.45),
-      borderRadius: BorderRadius.circular(10),
+      color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.55),
+      borderRadius: BorderRadius.circular(12),
     ),
     child: SingleChildScrollView(
       scrollDirection: Axis.horizontal,

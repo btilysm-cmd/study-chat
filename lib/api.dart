@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
@@ -10,7 +11,12 @@ class ApiConfig {
   String apiKey;
   String model;
 
-  bool get ready => baseUrl.trim().isNotEmpty && apiKey.trim().isNotEmpty && model.trim().isNotEmpty;
+  bool get ready =>
+      baseUrl.trim().isNotEmpty &&
+      apiKey.trim().isNotEmpty &&
+      model.trim().isNotEmpty;
+
+  String get root => baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
 }
 
 class ApiException implements Exception {
@@ -27,11 +33,10 @@ class ApiClient {
 
   Stream<String> streamChat({
     required ApiConfig config,
-    required List<Map<String, String>> messages,
+    required List<Map<String, dynamic>> messages,
     required String system,
   }) async* {
-    final root = config.baseUrl.trim().replaceAll(RegExp(r'/+$'), '');
-    final uri = Uri.parse('$root/chat/completions');
+    final uri = Uri.parse('${config.root}/chat/completions');
     final request = http.Request('POST', uri)
       ..headers.addAll({
         'content-type': 'application/json',
@@ -49,10 +54,12 @@ class ApiClient {
     final response = await _client.send(request);
     if (response.statusCode != 200) {
       final body = await response.stream.bytesToString();
-      throw ApiException('HTTP ${response.statusCode}：${body.length > 200 ? body.substring(0, 200) : body}');
+      throw ApiException(_errorText(response.statusCode, body));
     }
 
-    final lines = response.stream.transform(utf8.decoder).transform(const LineSplitter());
+    final lines = response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
     await for (final line in lines) {
       if (!line.startsWith('data:')) continue;
       final data = line.substring(5).trim();
@@ -71,4 +78,70 @@ class ApiClient {
       if (content is String && content.isNotEmpty) yield content;
     }
   }
+
+  Future<String> uploadDocument({
+    required ApiConfig config,
+    required String path,
+    required String name,
+  }) async {
+    final uri = Uri.parse('${config.root}/files');
+    final request = http.MultipartRequest('POST', uri)
+      ..headers['authorization'] = 'Bearer ${config.apiKey.trim()}'
+      ..fields['purpose'] = _purposeFor(name);
+    request.files.add(
+      await http.MultipartFile.fromPath('file', path, filename: name),
+    );
+
+    final response = await _client
+        .send(request)
+        .timeout(const Duration(minutes: 4));
+    final body = await response.stream.bytesToString();
+    if (response.statusCode != 200) {
+      throw ApiException(_errorText(response.statusCode, body));
+    }
+    try {
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      final id = json['id'] as String?;
+      if (id == null || id.isEmpty) throw const FormatException();
+      return id;
+    } catch (_) {
+      throw ApiException('文件上传返回无法解析');
+    }
+  }
+
+  static String _purposeFor(String name) {
+    final lower = name.toLowerCase();
+    const userData = [
+      '.txt',
+      '.md',
+      '.csv',
+      '.json',
+      '.xlsx',
+      '.xls',
+      '.epub',
+      '.mobi',
+    ];
+    if (userData.any(lower.endsWith)) return 'user_data';
+    return 'text_recognition';
+  }
+
+  static String _errorText(int status, String body) {
+    var detail = body.trim();
+    try {
+      final json = jsonDecode(body) as Map<String, dynamic>;
+      final error = json['error'];
+      if (error is Map && error['message'] is String) {
+        detail = error['message'] as String;
+      }
+    } catch (_) {
+      // Keep the raw body when it is not JSON.
+    }
+    if (detail.length > 300) detail = detail.substring(0, 300);
+    return 'HTTP $status：$detail';
+  }
+}
+
+Future<String> fileToDataUrl(String path, String mime) async {
+  final bytes = await File(path).readAsBytes();
+  return 'data:$mime;base64,${base64Encode(bytes)}';
 }

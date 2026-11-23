@@ -29,7 +29,8 @@ class _BranchScreenState extends State<BranchScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(() {
-      final near = _scroll.position.maxScrollExtent - _scroll.position.pixels < 90;
+      final near =
+          _scroll.position.maxScrollExtent - _scroll.position.pixels < 90;
       if (near != _stick) setState(() => _stick = near);
     });
   }
@@ -44,18 +45,23 @@ class _BranchScreenState extends State<BranchScreen> {
     if (!_scroll.hasClients) return;
     final target = _scroll.position.maxScrollExtent;
     if (animate) {
-      _scroll.animateTo(target, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
     } else {
       _scroll.jumpTo(target);
     }
   }
 
-  Future<void> _send(String text) async {
+  Future<void> _send(String text, List<Attachment> _) async {
     try {
       await widget.state.sendBranch(widget.conversation, widget.branch, text);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$error')));
     }
   }
 
@@ -63,15 +69,23 @@ class _BranchScreenState extends State<BranchScreen> {
   Widget build(BuildContext context) {
     final branch = widget.branch;
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     return AnimatedBuilder(
       animation: widget.state,
       builder: (context, _) {
         if (_stick) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(animate: false));
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _scrollToBottom(animate: false),
+          );
         }
         return Scaffold(
           appBar: AppBar(
-            title: Text(branch.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(
+              branch.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+            ),
           ),
           body: Column(
             children: [
@@ -80,52 +94,93 @@ class _BranchScreenState extends State<BranchScreen> {
                   children: [
                     ListView(
                       controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
                       children: [
-                        Card(
-                          clipBehavior: Clip.antiAlias,
-                          child: ExpansionTile(
-                            initiallyExpanded: true,
-                            title: Text(
-                              '原对话片段 · ${branch.anchor.runes.length} 字',
-                              style: const TextStyle(fontSize: 13),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: scheme.surface,
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: scheme.outlineVariant.withOpacity(0.5),
                             ),
-                            childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 14),
+                          ),
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Container(
-                                width: double.infinity,
-                                child: RichMessage(text: branch.anchor),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.bookmark_border,
+                                    size: 15,
+                                    color: scheme.primary,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '原对话片段 · ${branch.anchor.runes.length} 字',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: scheme.primary,
+                                    ),
+                                  ),
+                                ],
                               ),
+                              const SizedBox(height: 8),
+                              RichMessage(text: branch.anchor),
                             ],
                           ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 16),
                         for (final message in branch.messages)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 14),
-                            child: Column(
-                              crossAxisAlignment: message.role == 'user'
-                                  ? CrossAxisAlignment.end
-                                  : CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  message.role == 'user' ? '你' : '助手',
-                                  style: TextStyle(fontSize: 12, color: theme.colorScheme.outline),
-                                ),
-                                const SizedBox(height: 4),
-                                Container(
-                                  width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: message.role == 'user'
-                                        ? theme.colorScheme.primaryContainer.withOpacity(0.35)
-                                        : theme.colorScheme.surface,
-                                    border: Border.all(color: theme.dividerColor.withOpacity(0.35)),
-                                    borderRadius: BorderRadius.circular(12),
+                          RepaintBoundary(
+                            child: Padding(
+                              padding: const EdgeInsets.only(bottom: 18),
+                              child: Align(
+                                alignment: message.role == 'user'
+                                    ? Alignment.centerRight
+                                    : Alignment.centerLeft,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 680,
                                   ),
-                                  child: RichMessage(text: message.text, streaming: message.streaming),
+                                  child: Container(
+                                    width: message.role == 'user'
+                                        ? null
+                                        : double.infinity,
+                                    padding: message.role == 'user'
+                                        ? const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 12,
+                                          )
+                                        : const EdgeInsets.symmetric(
+                                            horizontal: 2,
+                                            vertical: 2,
+                                          ),
+                                    decoration: message.role == 'user'
+                                        ? BoxDecoration(
+                                            color: scheme.primaryContainer
+                                                .withOpacity(0.55),
+                                            borderRadius:
+                                                const BorderRadius.only(
+                                                  topLeft: Radius.circular(20),
+                                                  topRight: Radius.circular(20),
+                                                  bottomLeft: Radius.circular(
+                                                    20,
+                                                  ),
+                                                  bottomRight: Radius.circular(
+                                                    6,
+                                                  ),
+                                                ),
+                                          )
+                                        : null,
+                                    child: RichMessage(
+                                      text: message.text,
+                                      streaming: message.streaming,
+                                    ),
+                                  ),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                       ],
@@ -137,6 +192,7 @@ class _BranchScreenState extends State<BranchScreen> {
                         child: FloatingActionButton.small(
                           heroTag: 'branch-bottom',
                           onPressed: () => _scrollToBottom(),
+                          backgroundColor: scheme.surface,
                           child: const Icon(Icons.arrow_downward),
                         ),
                       ),
@@ -145,6 +201,10 @@ class _BranchScreenState extends State<BranchScreen> {
               ),
               Composer(
                 onSend: _send,
+                importAttachment: widget.state.store.importAttachment,
+                onPickModel: () {},
+                attachmentsEnabled: false,
+                showModel: false,
                 enabled: !widget.state.busy,
                 hint: '在这条分支里继续问…',
               ),

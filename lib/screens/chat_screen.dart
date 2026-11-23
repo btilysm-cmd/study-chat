@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -8,7 +10,11 @@ import 'branch_screen.dart';
 import 'settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
-  const ChatScreen({super.key, required this.state, required this.conversation});
+  const ChatScreen({
+    super.key,
+    required this.state,
+    required this.conversation,
+  });
 
   final AppState state;
   final Conversation conversation;
@@ -25,10 +31,13 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(() {
-      final near = _scroll.position.maxScrollExtent - _scroll.position.pixels < 90;
+      final near =
+          _scroll.position.maxScrollExtent - _scroll.position.pixels < 90;
       if (near != _stick) setState(() => _stick = near);
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(animate: false));
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _scrollToBottom(animate: false),
+    );
   }
 
   @override
@@ -41,26 +50,74 @@ class _ChatScreenState extends State<ChatScreen> {
     if (!_scroll.hasClients) return;
     final target = _scroll.position.maxScrollExtent;
     if (animate) {
-      _scroll.animateTo(target, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
+      _scroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
     } else {
       _scroll.jumpTo(target);
     }
   }
 
-  Future<void> _send(String text) async {
+  Future<void> _send(String text, List<Attachment> attachments) async {
     try {
-      await widget.state.sendMain(widget.conversation, text);
+      await widget.state.sendMain(
+        widget.conversation,
+        text,
+        attachments: attachments,
+      );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$error')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$error')));
     }
   }
 
   void _branch(ChatMessage message) {
     final branch = widget.state.createBranch(widget.conversation, message.text);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已建立分叉：${branch.title}')),
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('已建立分叉：${branch.title}')));
+  }
+
+  Future<void> _pickModel() async {
+    final current = widget.state.config?.model ?? 'deepseek-flash';
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '选择模型',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            for (final entry in const [
+              ('deepseek-flash', 'Flash', '快，支持图片与文档'),
+              ('deepseek-v4-pro', 'V4 Pro', '更强推理，纯文本'),
+            ])
+              RadioListTile<String>(
+                value: entry.$1,
+                groupValue: current,
+                title: Text(entry.$2),
+                subtitle: Text(entry.$3),
+                onChanged: (value) => Navigator.pop(context, value),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
+    if (picked != null && picked != current) {
+      await widget.state.switchModel(picked);
+    }
   }
 
   Future<void> _openBranches() async {
@@ -79,28 +136,37 @@ class _ChatScreenState extends State<ChatScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
                 child: Text(
                   '分支（${conversation.branches.length}）',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
               if (conversation.branches.isEmpty)
                 const Padding(
                   padding: EdgeInsets.all(20),
-                  child: Text('还没有分支。长按或点助手回复下的「分支」即可建立。'),
+                  child: Text('还没有分支。点助手回复下的「分支」即可从这段回答继续追问。'),
                 ),
               for (final branch in conversation.branches.reversed)
                 ListTile(
                   leading: const Icon(Icons.account_tree_outlined),
-                  title: Text(branch.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                  title: Text(
+                    branch.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   subtitle: Text('${branch.messages.length} 条问答'),
                   onTap: () {
                     Navigator.pop(context);
-                    navigator.push(MaterialPageRoute(
-                      builder: (_) => BranchScreen(
-                        state: widget.state,
-                        conversation: conversation,
-                        branch: branch,
+                    navigator.push(
+                      MaterialPageRoute(
+                        builder: (_) => BranchScreen(
+                          state: widget.state,
+                          conversation: conversation,
+                          branch: branch,
+                        ),
                       ),
-                    ));
+                    );
                   },
                 ),
             ],
@@ -117,11 +183,19 @@ class _ChatScreenState extends State<ChatScreen> {
       animation: widget.state,
       builder: (context, _) {
         if (_stick) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom(animate: false));
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _scrollToBottom(animate: false),
+          );
         }
+        final theme = Theme.of(context);
         return Scaffold(
           appBar: AppBar(
-            title: Text(conversation.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            title: Text(
+              conversation.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+            ),
             actions: [
               Badge(
                 isLabelVisible: conversation.branches.isNotEmpty,
@@ -135,9 +209,11 @@ class _ChatScreenState extends State<ChatScreen> {
               IconButton(
                 tooltip: '设置',
                 icon: const Icon(Icons.settings_outlined),
-                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SettingsScreen(state: widget.state),
-                )),
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(state: widget.state),
+                  ),
+                ),
               ),
             ],
           ),
@@ -148,15 +224,19 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     ListView.builder(
                       controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
                       itemCount: conversation.messages.length,
                       itemBuilder: (context, index) {
                         final message = conversation.messages[index];
-                        return _MessageTile(
-                          message: message,
-                          onBranch: message.role == 'assistant' && !message.streaming
-                              ? () => _branch(message)
-                              : null,
+                        return RepaintBoundary(
+                          child: _MessageTile(
+                            message: message,
+                            onBranch:
+                                message.role == 'assistant' &&
+                                    !message.streaming
+                                ? () => _branch(message)
+                                : null,
+                          ),
                         );
                       },
                     ),
@@ -167,6 +247,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         child: FloatingActionButton.small(
                           heroTag: 'chat-bottom',
                           onPressed: () => _scrollToBottom(),
+                          backgroundColor: theme.colorScheme.surface,
                           child: const Icon(Icons.arrow_downward),
                         ),
                       ),
@@ -175,8 +256,11 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               Composer(
                 onSend: _send,
+                importAttachment: widget.state.store.importAttachment,
+                onPickModel: _pickModel,
+                model: widget.state.config?.model ?? 'deepseek-flash',
                 enabled: !widget.state.busy,
-                hint: '提问…',
+                hint: '向学习助手提问…',
               ),
             ],
           ),
@@ -195,44 +279,127 @@ class _MessageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final isUser = message.role == 'user';
     return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.only(bottom: 18),
       child: Column(
-        crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        crossAxisAlignment: isUser
+            ? CrossAxisAlignment.end
+            : CrossAxisAlignment.start,
         children: [
-          Text(
-            isUser ? '你' : '助手',
-            style: TextStyle(fontSize: 12, color: theme.colorScheme.outline),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: isUser
-                  ? theme.colorScheme.primaryContainer.withOpacity(0.35)
-                  : theme.colorScheme.surface,
-              border: Border.all(color: theme.dividerColor.withOpacity(0.35)),
-              borderRadius: BorderRadius.circular(12),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Container(
+              width: isUser ? null : double.infinity,
+              padding: isUser
+                  ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+                  : const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              decoration: isUser
+                  ? BoxDecoration(
+                      color: scheme.primaryContainer.withOpacity(0.55),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(6),
+                      ),
+                    )
+                  : null,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (message.attachments.isNotEmpty) ...[
+                    _AttachmentStrip(attachments: message.attachments),
+                    if (message.text.trim().isNotEmpty)
+                      const SizedBox(height: 8),
+                  ],
+                  if (message.text.trim().isNotEmpty || message.streaming)
+                    RichMessage(
+                      text: message.text,
+                      streaming: message.streaming,
+                    ),
+                ],
+              ),
             ),
-            child: RichMessage(text: message.text, streaming: message.streaming),
           ),
           if (onBranch != null)
-            Align(
-              alignment: Alignment.centerLeft,
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
               child: TextButton.icon(
                 onPressed: onBranch,
-                icon: const Icon(Icons.account_tree_outlined, size: 16),
-                label: const Text('分支'),
+                icon: const Icon(Icons.account_tree_outlined, size: 15),
+                label: const Text('分支', style: TextStyle(fontSize: 12.5)),
                 style: TextButton.styleFrom(
                   visualDensity: VisualDensity.compact,
-                  foregroundColor: theme.colorScheme.outline,
+                  foregroundColor: scheme.onSurface.withOpacity(0.45),
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
                 ),
               ),
             ),
         ],
       ),
+    );
+  }
+}
+
+class _AttachmentStrip extends StatelessWidget {
+  const _AttachmentStrip({required this.attachments});
+
+  final List<Attachment> attachments;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final attachment in attachments)
+          if (attachment.isImage && File(attachment.path).existsSync())
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(
+                File(attachment.path),
+                width: 150,
+                height: 150,
+                fit: BoxFit.cover,
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: scheme.outlineVariant.withOpacity(0.6),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    attachment.isImage
+                        ? Icons.image_outlined
+                        : Icons.description_outlined,
+                    size: 16,
+                    color: scheme.primary,
+                  ),
+                  const SizedBox(width: 6),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 200),
+                    child: Text(
+                      attachment.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+      ],
     );
   }
 }
