@@ -32,13 +32,9 @@ class _ChatScreenState extends State<ChatScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(() {
-      final near =
-          _scroll.position.maxScrollExtent - _scroll.position.pixels < 90;
+      final near = _scroll.offset < 80;
       if (near != _stick) setState(() => _stick = near);
     });
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _scrollToBottom(animate: false),
-    );
   }
 
   @override
@@ -49,15 +45,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _scrollToBottom({bool animate = true}) {
     if (!_scroll.hasClients) return;
-    final target = _scroll.position.maxScrollExtent;
     if (animate) {
       _scroll.animateTo(
-        target,
-        duration: const Duration(milliseconds: 200),
+        0,
+        duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
     } else {
-      _scroll.jumpTo(target);
+      _scroll.jumpTo(0);
     }
   }
 
@@ -268,11 +263,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return AnimatedBuilder(
       animation: widget.state,
       builder: (context, _) {
-        if (_stick) {
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => _scrollToBottom(animate: false),
-          );
-        }
         final theme = Theme.of(context);
         return Scaffold(
           appBar: AppBar(
@@ -315,10 +305,12 @@ class _ChatScreenState extends State<ChatScreen> {
                   children: [
                     ListView.builder(
                       controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
+                      reverse: true,
+                      padding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
                       itemCount: conversation.messages.length,
                       itemBuilder: (context, index) {
-                        final message = conversation.messages[index];
+                        final message = conversation
+                            .messages[conversation.messages.length - 1 - index];
                         return RepaintBoundary(
                           child: _MessageTile(
                             message: message,

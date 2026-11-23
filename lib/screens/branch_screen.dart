@@ -30,8 +30,7 @@ class _BranchScreenState extends State<BranchScreen> {
   void initState() {
     super.initState();
     _scroll.addListener(() {
-      final near =
-          _scroll.position.maxScrollExtent - _scroll.position.pixels < 90;
+      final near = _scroll.offset < 80;
       if (near != _stick) setState(() => _stick = near);
     });
   }
@@ -44,15 +43,14 @@ class _BranchScreenState extends State<BranchScreen> {
 
   void _scrollToBottom({bool animate = true}) {
     if (!_scroll.hasClients) return;
-    final target = _scroll.position.maxScrollExtent;
     if (animate) {
       _scroll.animateTo(
-        target,
-        duration: const Duration(milliseconds: 200),
+        0,
+        duration: const Duration(milliseconds: 220),
         curve: Curves.easeOut,
       );
     } else {
-      _scroll.jumpTo(target);
+      _scroll.jumpTo(0);
     }
   }
 
@@ -69,16 +67,11 @@ class _BranchScreenState extends State<BranchScreen> {
   @override
   Widget build(BuildContext context) {
     final branch = widget.branch;
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final scheme = Theme.of(context).colorScheme;
+    final messages = branch.messages;
     return AnimatedBuilder(
       animation: widget.state,
       builder: (context, _) {
-        if (_stick) {
-          WidgetsBinding.instance.addPostFrameCallback(
-            (_) => _scrollToBottom(animate: false),
-          );
-        }
         return Scaffold(
           appBar: AppBar(
             title: Text(
@@ -93,97 +86,20 @@ class _BranchScreenState extends State<BranchScreen> {
               Expanded(
                 child: Stack(
                   children: [
-                    ListView(
+                    ListView.builder(
                       controller: _scroll,
-                      padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            color: scheme.surface,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: scheme.outlineVariant.withOpacity(0.5),
-                            ),
-                          ),
-                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.bookmark_border,
-                                    size: 15,
-                                    color: scheme.primary,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '原对话片段 · ${branch.anchor.runes.length} 字',
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: scheme.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              RichMessage(text: branch.anchor),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        for (final message in branch.messages)
-                          RepaintBoundary(
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 18),
-                              child: Align(
-                                alignment: message.role == 'user'
-                                    ? Alignment.centerRight
-                                    : Alignment.centerLeft,
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 680,
-                                  ),
-                                  child: Container(
-                                    width: message.role == 'user'
-                                        ? null
-                                        : double.infinity,
-                                    padding: message.role == 'user'
-                                        ? const EdgeInsets.symmetric(
-                                            horizontal: 16,
-                                            vertical: 12,
-                                          )
-                                        : const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                            vertical: 2,
-                                          ),
-                                    decoration: message.role == 'user'
-                                        ? BoxDecoration(
-                                            color: scheme.primaryContainer
-                                                .withOpacity(0.55),
-                                            borderRadius:
-                                                const BorderRadius.only(
-                                                  topLeft: Radius.circular(20),
-                                                  topRight: Radius.circular(20),
-                                                  bottomLeft: Radius.circular(
-                                                    20,
-                                                  ),
-                                                  bottomRight: Radius.circular(
-                                                    6,
-                                                  ),
-                                                ),
-                                          )
-                                        : null,
-                                    child: message.streaming
-                                        ? StreamingText(text: message.text)
-                                        : RichMessage(text: message.text),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
+                      reverse: true,
+                      padding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
+                      itemCount: messages.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == messages.length) {
+                          return _anchorCard(branch, scheme);
+                        }
+                        return _messageTile(
+                          messages[messages.length - 1 - index],
+                          scheme,
+                        );
+                      },
                     ),
                     if (!_stick)
                       Positioned(
@@ -212,6 +128,77 @@ class _BranchScreenState extends State<BranchScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _anchorCard(Branch branch, ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: scheme.outlineVariant.withOpacity(0.5)),
+        ),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.bookmark_border, size: 15, color: scheme.primary),
+                const SizedBox(width: 6),
+                Text(
+                  '原对话片段 · ${branch.anchor.runes.length} 字',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: scheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            RichMessage(text: branch.anchor),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _messageTile(ChatMessage message, ColorScheme scheme) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: RepaintBoundary(
+        child: Align(
+          alignment: message.role == 'user'
+              ? Alignment.centerRight
+              : Alignment.centerLeft,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 680),
+            child: Container(
+              width: message.role == 'user' ? null : double.infinity,
+              padding: message.role == 'user'
+                  ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
+                  : const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+              decoration: message.role == 'user'
+                  ? BoxDecoration(
+                      color: scheme.primaryContainer.withOpacity(0.55),
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(20),
+                        topRight: Radius.circular(20),
+                        bottomLeft: Radius.circular(20),
+                        bottomRight: Radius.circular(6),
+                      ),
+                    )
+                  : null,
+              child: message.streaming
+                  ? StreamingText(text: message.text)
+                  : RichMessage(text: message.text),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
