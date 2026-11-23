@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_math_fork/flutter_math_fork.dart';
+import 'package:flutter_math_fork/flutter_math.dart';
 
 class RichMessage extends StatelessWidget {
   const RichMessage({super.key, required this.text, this.streaming = false});
