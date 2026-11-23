@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../widgets/appear.dart';
 import '../widgets/composer.dart';
 import '../widgets/rich_text.dart';
 import '../widgets/streaming_text.dart';
@@ -22,36 +24,91 @@ class BranchScreen extends StatefulWidget {
   State<BranchScreen> createState() => _BranchScreenState();
 }
 
-class _BranchScreenState extends State<BranchScreen> {
+class _BranchScreenState extends State<BranchScreen>
+    with SingleTickerProviderStateMixin {
   final _scroll = ScrollController();
+  late final Ticker _follow;
   bool _stick = true;
+  bool _dragging = false;
+  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
+    _follow = createTicker(_onFollowTick);
     _scroll.addListener(() {
-      final near = _scroll.offset < 80;
-      if (near != _stick) setState(() => _stick = near);
+      if (_dragging || !_scroll.hasClients) return;
+      final atBottom = _scroll.position.maxScrollExtent - _scroll.offset < 80;
+      if (atBottom != _stick) setState(() => _stick = atBottom);
+      if (atBottom) _scheduleFollow();
     });
   }
 
   @override
   void dispose() {
+    _follow.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom({bool animate = true}) {
-    if (!_scroll.hasClients) return;
-    if (animate) {
-      _scroll.animateTo(
-        0,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-    } else {
-      _scroll.jumpTo(0);
+  void _onFollowTick(Duration _) {
+    if (!mounted || !_scroll.hasClients || _dragging || !_stick) {
+      _follow.stop();
+      return;
     }
+    final target = _scroll.position.maxScrollExtent;
+    final current = _scroll.offset;
+    final delta = target - current;
+    if (delta <= 0.8) {
+      _scroll.jumpTo(target);
+      _follow.stop();
+      return;
+    }
+    _scroll.jumpTo(current + delta * 0.3);
+  }
+
+  void _scheduleFollow() {
+    if (!_stick || _dragging) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_stick || _dragging) return;
+      if (!_scroll.hasClients) return;
+      if (!_initialized) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        _initialized = true;
+        return;
+      }
+      if (!_follow.isActive) _follow.start();
+    });
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _dragging = true;
+      _stick = false;
+      _follow.stop();
+      if (mounted) setState(() {});
+    } else if (notification is ScrollEndNotification) {
+      _dragging = false;
+      if (_scroll.hasClients) {
+        final atBottom = _scroll.position.maxScrollExtent - _scroll.offset < 80;
+        _stick = atBottom;
+        if (atBottom) _scheduleFollow();
+      }
+      if (mounted) setState(() {});
+    }
+    return false;
+  }
+
+  void _scrollToBottom() {
+    if (!_scroll.hasClients) return;
+    _stick = true;
+    _dragging = false;
+    _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _send(String text, List<Attachment> _) async {
@@ -72,6 +129,7 @@ class _BranchScreenState extends State<BranchScreen> {
     return AnimatedBuilder(
       animation: widget.state,
       builder: (context, _) {
+        _scheduleFollow();
         return Scaffold(
           appBar: AppBar(
             title: Text(
@@ -86,20 +144,23 @@ class _BranchScreenState extends State<BranchScreen> {
               Expanded(
                 child: Stack(
                   children: [
-                    ListView.builder(
-                      controller: _scroll,
-                      reverse: true,
-                      padding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
-                      itemCount: messages.length + 1,
-                      itemBuilder: (context, index) {
-                        if (index == messages.length) {
-                          return _anchorCard(branch, scheme);
-                        }
-                        return _messageTile(
-                          messages[messages.length - 1 - index],
-                          scheme,
-                        );
-                      },
+                    NotificationListener<ScrollNotification>(
+                      onNotification: _onScrollNotification,
+                      child: ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
+                        itemCount: messages.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == 0) return _anchorCard(branch, scheme);
+                          final message = messages[index - 1];
+                          return Appear(
+                            key: ValueKey(
+                              '${message.at.microsecondsSinceEpoch}-${message.role}',
+                            ),
+                            child: _messageTile(message, scheme),
+                          );
+                        },
+                      ),
                     ),
                     if (!_stick)
                       Positioned(
@@ -107,7 +168,7 @@ class _BranchScreenState extends State<BranchScreen> {
                         bottom: 16,
                         child: FloatingActionButton.small(
                           heroTag: 'branch-bottom',
-                          onPressed: () => _scrollToBottom(),
+                          onPressed: _scrollToBottom,
                           backgroundColor: scheme.surface,
                           child: const Icon(Icons.arrow_downward),
                         ),
@@ -192,9 +253,24 @@ class _BranchScreenState extends State<BranchScreen> {
                       ),
                     )
                   : null,
-              child: message.streaming
-                  ? StreamingText(text: message.text)
-                  : RichMessage(text: message.text),
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 260),
+                switchInCurve: Curves.easeOutCubic,
+                switchOutCurve: Curves.easeIn,
+                layoutBuilder: (current, previous) => Stack(
+                  alignment: AlignmentDirectional.topStart,
+                  children: [...previous, if (current != null) current],
+                ),
+                child: message.streaming
+                    ? StreamingText(
+                        key: const ValueKey('streaming'),
+                        text: message.text,
+                      )
+                    : RichMessage(
+                        key: const ValueKey('final'),
+                        text: message.text,
+                      ),
+              ),
             ),
           ),
         ),

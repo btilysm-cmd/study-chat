@@ -82,6 +82,12 @@ class StudyChatApp extends StatelessWidget {
           textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
       textTheme: const TextTheme(
         bodyMedium: TextStyle(fontSize: 15, height: 1.5),
       ),

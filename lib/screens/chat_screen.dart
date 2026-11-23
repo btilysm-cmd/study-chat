@@ -1,9 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../widgets/appear.dart';
 import '../widgets/composer.dart';
 import '../widgets/rich_text.dart';
 import '../widgets/streaming_text.dart';
@@ -24,36 +26,91 @@ class ChatScreen extends StatefulWidget {
   State<ChatScreen> createState() => _ChatScreenState();
 }
 
-class _ChatScreenState extends State<ChatScreen> {
+class _ChatScreenState extends State<ChatScreen>
+    with SingleTickerProviderStateMixin {
   final _scroll = ScrollController();
+  late final Ticker _follow;
   bool _stick = true;
+  bool _dragging = false;
+  bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
+    _follow = createTicker(_onFollowTick);
     _scroll.addListener(() {
-      final near = _scroll.offset < 80;
-      if (near != _stick) setState(() => _stick = near);
+      if (_dragging || !_scroll.hasClients) return;
+      final atBottom = _scroll.position.maxScrollExtent - _scroll.offset < 80;
+      if (atBottom != _stick) setState(() => _stick = atBottom);
+      if (atBottom) _scheduleFollow();
     });
   }
 
   @override
   void dispose() {
+    _follow.dispose();
     _scroll.dispose();
     super.dispose();
   }
 
-  void _scrollToBottom({bool animate = true}) {
-    if (!_scroll.hasClients) return;
-    if (animate) {
-      _scroll.animateTo(
-        0,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
-    } else {
-      _scroll.jumpTo(0);
+  void _onFollowTick(Duration _) {
+    if (!mounted || !_scroll.hasClients || _dragging || !_stick) {
+      _follow.stop();
+      return;
     }
+    final target = _scroll.position.maxScrollExtent;
+    final current = _scroll.offset;
+    final delta = target - current;
+    if (delta <= 0.8) {
+      _scroll.jumpTo(target);
+      _follow.stop();
+      return;
+    }
+    _scroll.jumpTo(current + delta * 0.3);
+  }
+
+  void _scheduleFollow() {
+    if (!_stick || _dragging) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_stick || _dragging) return;
+      if (!_scroll.hasClients) return;
+      if (!_initialized) {
+        _scroll.jumpTo(_scroll.position.maxScrollExtent);
+        _initialized = true;
+        return;
+      }
+      if (!_follow.isActive) _follow.start();
+    });
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _dragging = true;
+      _stick = false;
+      _follow.stop();
+      if (mounted) setState(() {});
+    } else if (notification is ScrollEndNotification) {
+      _dragging = false;
+      if (_scroll.hasClients) {
+        final atBottom = _scroll.position.maxScrollExtent - _scroll.offset < 80;
+        _stick = atBottom;
+        if (atBottom) _scheduleFollow();
+      }
+      if (mounted) setState(() {});
+    }
+    return false;
+  }
+
+  void _scrollToBottom() {
+    if (!_scroll.hasClients) return;
+    _stick = true;
+    _dragging = false;
+    _scroll.animateTo(
+      _scroll.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _send(String text, List<Attachment> attachments) async {
@@ -263,6 +320,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return AnimatedBuilder(
       animation: widget.state,
       builder: (context, _) {
+        _scheduleFollow();
         final theme = Theme.of(context);
         return Scaffold(
           appBar: AppBar(
@@ -303,25 +361,31 @@ class _ChatScreenState extends State<ChatScreen> {
               Expanded(
                 child: Stack(
                   children: [
-                    ListView.builder(
-                      controller: _scroll,
-                      reverse: true,
-                      padding: const EdgeInsets.fromLTRB(14, 18, 14, 10),
-                      itemCount: conversation.messages.length,
-                      itemBuilder: (context, index) {
-                        final message = conversation
-                            .messages[conversation.messages.length - 1 - index];
-                        return RepaintBoundary(
-                          child: _MessageTile(
-                            message: message,
-                            onBranch:
-                                message.role == 'assistant' &&
-                                    !message.streaming
-                                ? () => _branch(message)
-                                : null,
-                          ),
-                        );
-                      },
+                    NotificationListener<ScrollNotification>(
+                      onNotification: _onScrollNotification,
+                      child: ListView.builder(
+                        controller: _scroll,
+                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
+                        itemCount: conversation.messages.length,
+                        itemBuilder: (context, index) {
+                          final message = conversation.messages[index];
+                          return RepaintBoundary(
+                            child: Appear(
+                              key: ValueKey(
+                                '${message.at.microsecondsSinceEpoch}-${message.role}',
+                              ),
+                              child: _MessageTile(
+                                message: message,
+                                onBranch:
+                                    message.role == 'assistant' &&
+                                        !message.streaming
+                                    ? () => _branch(message)
+                                    : null,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
                     ),
                     if (!_stick)
                       Positioned(
@@ -397,10 +461,26 @@ class _MessageTile extends StatelessWidget {
                     if (message.text.trim().isNotEmpty)
                       const SizedBox(height: 8),
                   ],
-                  if (message.streaming)
-                    StreamingText(text: message.text)
-                  else if (message.text.trim().isNotEmpty)
-                    RichMessage(text: message.text),
+                  AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 260),
+                    switchInCurve: Curves.easeOutCubic,
+                    switchOutCurve: Curves.easeIn,
+                    layoutBuilder: (current, previous) => Stack(
+                      alignment: AlignmentDirectional.topStart,
+                      children: [...previous, if (current != null) current],
+                    ),
+                    child: message.streaming
+                        ? StreamingText(
+                            key: const ValueKey('streaming'),
+                            text: message.text,
+                          )
+                        : message.text.trim().isEmpty
+                        ? const SizedBox.shrink(key: ValueKey('empty'))
+                        : RichMessage(
+                            key: const ValueKey('final'),
+                            text: message.text,
+                          ),
+                  ),
                 ],
               ),
             ),
