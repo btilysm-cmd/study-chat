@@ -16,6 +16,14 @@ const _branchSystem =
     '你在一条分支追问里回答。分支锚点是用户选中过的原回答，是这段对话里唯一的共识；'
     '看不到主对话的完整上下文，不要凭空假设。回答优先精确、可复核；公式用 LaTeX，代码用围栏代码块。';
 
+String _lengthHint(String value) {
+  return switch (value) {
+    'short' => '回答长度：短。只给结论和关键步骤，省略铺垫，尽量控制在 300 字以内。',
+    'long' => '回答长度：长。给出完整推导、多种角度和必要例子，充分展开。',
+    _ => '回答长度：中。先给结论，再给必要推导和一个例子，尽量控制在 800 字以内。',
+  };
+}
+
 class AppState extends ChangeNotifier {
   AppState(this.store);
 
