@@ -97,8 +97,8 @@ class _ComposerState extends State<Composer> {
     if (_picking) return;
     setState(() => _picking = true);
     try {
-      final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-      for (final file in result?.files ?? const <PlatformFile>[]) {
+      final files = await FilePicker.pickFiles();
+      for (final file in files) {
         final path = file.path;
         if (path != null) await _add(path, file.name);
       }
