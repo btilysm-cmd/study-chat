@@ -1,12 +1,15 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../models.dart';
-import '../widgets/appear.dart';
 import '../widgets/composer.dart';
-import '../widgets/rich_text.dart';
-import '../widgets/streaming_text.dart';
+import '../widgets/markdown_theme.dart';
 
 class BranchScreen extends StatefulWidget {
   const BranchScreen({
@@ -32,6 +35,8 @@ class _BranchScreenState extends State<BranchScreen>
   bool _dragging = false;
   bool _initialized = false;
   int _idleTicks = 0;
+  GptMarkdownConfig? _mdConfig;
+  ThemeData? _mdTheme;
 
   @override
   void initState() {
@@ -118,15 +123,42 @@ class _BranchScreenState extends State<BranchScreen>
     }
   }
 
+  GptMarkdownConfig _markdownConfig(BuildContext context) {
+    final theme = Theme.of(context);
+    if (identical(theme, _mdTheme) && _mdConfig != null) return _mdConfig!;
+    _mdTheme = theme;
+    _mdConfig = studyMarkdownConfig(
+      context,
+      onLinkTap: (url) => unawaited(_openUrl(url)),
+      onImageTap: (url) => unawaited(_openUrl(url)),
+      onCodeCopy: (code) {
+        unawaited(Clipboard.setData(ClipboardData(text: code)));
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('代码已复制')));
+        }
+      },
+    );
+    return _mdConfig!;
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final branch = widget.branch;
     final scheme = Theme.of(context).colorScheme;
-    final messages = branch.messages;
     return AnimatedBuilder(
       animation: widget.state,
       builder: (context, _) {
         _scheduleFollow();
+        final config = _markdownConfig(context);
         return Scaffold(
           appBar: AppBar(
             title: Text(
@@ -143,20 +175,20 @@ class _BranchScreenState extends State<BranchScreen>
                   children: [
                     NotificationListener<ScrollNotification>(
                       onNotification: _onScrollNotification,
-                      child: ListView.builder(
-                        controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
-                        itemCount: messages.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == 0) return _anchorCard(branch, scheme);
-                          final message = messages[index - 1];
-                          return Appear(
-                            key: ValueKey(
-                              '${message.at.microsecondsSinceEpoch}-${message.role}',
+                      child: StudyMarkdownTheme(
+                        child: CustomScrollView(
+                          controller: _scroll,
+                          slivers: [
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+                              sliver: SliverToBoxAdapter(
+                                child: _anchorCard(branch, scheme, config),
+                              ),
                             ),
-                            child: _messageTile(message, scheme),
-                          );
-                        },
+                            for (final message in branch.messages)
+                              ..._messageSlivers(message, config),
+                          ],
+                        ),
                       ),
                     ),
                     if (!_stick)
@@ -196,88 +228,103 @@ class _BranchScreenState extends State<BranchScreen>
     );
   }
 
-  Widget _anchorCard(Branch branch, ColorScheme scheme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: scheme.outlineVariant.withOpacity(0.5)),
-        ),
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.bookmark_border, size: 15, color: scheme.primary),
-                const SizedBox(width: 6),
-                Text(
-                  '原对话片段 · ${branch.anchor.runes.length} 字',
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600,
-                    color: scheme.primary,
+  List<Widget> _messageSlivers(ChatMessage message, GptMarkdownConfig config) {
+    if (message.role == 'user') {
+      final scheme = Theme.of(context).colorScheme;
+      return [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
+          sliver: SliverToBoxAdapter(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 680),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer.withOpacity(0.55),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      topRight: Radius.circular(20),
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(6),
+                    ),
+                  ),
+                  child: Text(
+                    message.text,
+                    style: const TextStyle(fontSize: 15.5, height: 1.6),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            RichMessage(text: branch.anchor),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _messageTile(ChatMessage message, ColorScheme scheme) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: RepaintBoundary(
-        child: Align(
-          alignment: message.role == 'user'
-              ? Alignment.centerRight
-              : Alignment.centerLeft,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 680),
-            child: Container(
-              width: message.role == 'user' ? null : double.infinity,
-              padding: message.role == 'user'
-                  ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12)
-                  : const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-              decoration: message.role == 'user'
-                  ? BoxDecoration(
-                      color: scheme.primaryContainer.withOpacity(0.55),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(20),
-                        topRight: Radius.circular(20),
-                        bottomLeft: Radius.circular(20),
-                        bottomRight: Radius.circular(6),
-                      ),
-                    )
-                  : null,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 260),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeIn,
-                layoutBuilder: (current, previous) => Stack(
-                  alignment: AlignmentDirectional.topStart,
-                  children: [...previous, if (current != null) current],
-                ),
-                child: message.streaming
-                    ? StreamingText(
-                        key: const ValueKey('streaming'),
-                        text: message.text,
-                      )
-                    : RichMessage(
-                        key: const ValueKey('final'),
-                        text: message.text,
-                      ),
               ),
             ),
           ),
         ),
+      ];
+    }
+    if (message.text.trim().isEmpty) {
+      return [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              message.streaming ? '…' : '',
+              style: const TextStyle(fontSize: 15.5, height: 1.65),
+            ),
+          ),
+        ),
+      ];
+    }
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 18),
+        sliver: SliverGptMarkdown(
+          message.text,
+          config: config,
+          useDollarSignsForLatex: true,
+        ),
+      ),
+    ];
+  }
+
+  Widget _anchorCard(
+    Branch branch,
+    ColorScheme scheme,
+    GptMarkdownConfig config,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.5)),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.bookmark_border, size: 15, color: scheme.primary),
+              const SizedBox(width: 6),
+              Text(
+                '原对话片段 · ${branch.anchor.runes.length} 字',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: scheme.primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          GptMarkdown(
+            branch.anchor,
+            config: config,
+            useDollarSignsForLatex: true,
+          ),
+        ],
       ),
     );
   }

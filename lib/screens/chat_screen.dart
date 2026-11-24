@@ -12,6 +12,7 @@ import '../models.dart';
 import '../plain_text.dart';
 import '../widgets/appear.dart';
 import '../widgets/composer.dart';
+import '../widgets/markdown_theme.dart';
 import '../widgets/rich_text.dart';
 import '../widgets/streaming_text.dart';
 import 'branch_screen.dart';
@@ -41,8 +42,6 @@ class _ChatScreenState extends State<ChatScreen>
   int _idleTicks = 0;
   GptMarkdownConfig? _mdConfig;
   ThemeData? _mdTheme;
-  GptMarkdownThemeData? _mdThemeData;
-  ThemeData? _mdThemeDataTheme;
 
   @override
   void initState() {
@@ -357,11 +356,11 @@ class _ChatScreenState extends State<ChatScreen>
   GptMarkdownConfig _markdownConfig(BuildContext context) {
     final theme = Theme.of(context);
     if (identical(theme, _mdTheme) && _mdConfig != null) return _mdConfig!;
-    final scheme = theme.colorScheme;
     _mdTheme = theme;
-    _mdConfig = GptMarkdownConfig(
-      style: TextStyle(fontSize: 15.5, height: 1.65, color: scheme.onSurface),
-      onLinkTap: (url, title) => unawaited(_openUrl(url)),
+    _mdConfig = studyMarkdownConfig(
+      context,
+      onLinkTap: (url) => unawaited(_openUrl(url)),
+      onImageTap: (url) => unawaited(_openUrl(url)),
       onCodeCopy: (code) {
         unawaited(Clipboard.setData(ClipboardData(text: code)));
         if (mounted) {
@@ -369,68 +368,8 @@ class _ChatScreenState extends State<ChatScreen>
               .showSnackBar(const SnackBar(content: Text('代码已复制')));
         }
       },
-      onImageTap: (url) => unawaited(_openUrl(url)),
-      styleSheet: const GptMarkdownStyleSheet(
-        latex: LatexStyle(scrollBlockHorizontally: true),
-      ),
     );
     return _mdConfig!;
-  }
-
-  GptMarkdownThemeData _markdownTheme(BuildContext context) {
-    final theme = Theme.of(context);
-    if (identical(theme, _mdThemeDataTheme) && _mdThemeData != null) {
-      return _mdThemeData!;
-    }
-    final scheme = theme.colorScheme;
-    final base = TextStyle(
-      color: scheme.onSurface,
-      fontSize: 15.5,
-      height: 1.65,
-    );
-    _mdThemeDataTheme = theme;
-    _mdThemeData = GptMarkdownThemeData(
-      brightness: theme.brightness,
-      h1: base.copyWith(
-        fontSize: 20,
-        fontWeight: FontWeight.w800,
-        height: 1.35,
-      ),
-      h2: base.copyWith(
-        fontSize: 18,
-        fontWeight: FontWeight.w800,
-        height: 1.35,
-      ),
-      h3: base.copyWith(
-        fontSize: 16.5,
-        fontWeight: FontWeight.w700,
-        height: 1.4,
-      ),
-      h4: base.copyWith(fontSize: 16, fontWeight: FontWeight.w700, height: 1.4),
-      h5: base.copyWith(
-        fontSize: 15.5,
-        fontWeight: FontWeight.w700,
-        height: 1.4,
-      ),
-      h6: base.copyWith(
-        fontSize: 15.5,
-        fontWeight: FontWeight.w700,
-        height: 1.4,
-      ),
-      autoAddDividerLineAfterH1: false,
-      linkColor: scheme.primary,
-      linkHoverColor: scheme.primary,
-      styleSheet: const GptMarkdownStyleSheet(
-        latex: LatexStyle(
-          textStyle: TextStyle(fontSize: 14.5),
-          scrollBlockHorizontally: true,
-        ),
-        codeBlock: CodeBlockStyle(fontSize: 13, highlightWhileStreaming: false),
-        heading: HeadingStyle(padding: EdgeInsets.only(top: 6, bottom: 2)),
-        blockSpacing: 10,
-      ),
-    );
-    return _mdThemeData!;
   }
 
   Future<void> _openUrl(String url) async {
@@ -620,8 +559,7 @@ class _ChatScreenState extends State<ChatScreen>
                   children: [
                     NotificationListener<ScrollNotification>(
                       onNotification: _onScrollNotification,
-                      child: GptMarkdownTheme(
-                        gptThemeData: _markdownTheme(context),
+                      child: StudyMarkdownTheme(
                         child: CustomScrollView(
                           controller: _scroll,
                           slivers: [
