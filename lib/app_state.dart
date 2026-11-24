@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import 'api.dart';
 import 'models.dart';
+import 'pdf_pages.dart';
 import 'store.dart';
 
 const _mainSystem =
@@ -202,6 +203,39 @@ class AppState extends ChangeNotifier {
             'type': 'text',
             'text': '【附件：${attachment.name}】\n$content',
           });
+        } else if (attachment.mime == 'application/pdf') {
+          final plan = await PdfImagePlan.prepare(attachment.path);
+          // Scanned documents have no text layer; don't waste an upload.
+          if (!plan.allPagesAreImages || plan.pages.isEmpty) {
+            var id = attachment.fileId;
+            if (id == null || id.isEmpty) {
+              id = await api.uploadDocument(
+                config: config,
+                path: attachment.path,
+                name: attachment.name,
+              );
+              attachment.fileId = id;
+            }
+            parts.add({'type': 'file', 'file_id': id});
+          }
+          if (plan.pages.isNotEmpty) {
+            parts.add({
+              'type': 'text',
+              'text':
+                  '【PDF：共 ${plan.pageCount} 页，'
+                  '其中 ${plan.imagePageCount} 页为图片/扫描页，'
+                  '已读取图片页：${plan.pages.map((page) => page.page).join('、')}】',
+            });
+            for (final page in plan.pages) {
+              parts.add({'type': 'text', 'text': '【PDF 第 ${page.page} 页】'});
+              parts.add({
+                'type': 'image_url',
+                'image_url': {
+                  'url': await fileToDataUrl(page.path, 'image/jpeg'),
+                },
+              });
+            }
+          }
         } else {
           var id = attachment.fileId;
           if (id == null || id.isEmpty) {

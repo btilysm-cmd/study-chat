@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pdfrx/pdfrx.dart';
 
 import 'app_state.dart';
 import 'screens/home_screen.dart';
@@ -6,6 +7,7 @@ import 'store.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await pdfrxFlutterInitialize();
   final state = AppState(Store());
   await state.init();
   runApp(StudyChatApp(state: state));
