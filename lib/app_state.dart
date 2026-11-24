@@ -224,7 +224,8 @@ class AppState extends ChangeNotifier {
               'text':
                   '【PDF：共 ${plan.pageCount} 页，'
                   '其中 ${plan.imagePageCount} 页为图片/扫描页，'
-                  '已读取图片页：${plan.pages.map((page) => page.page).join('、')}】',
+                  '已读取图片页：${plan.pages.map((page) => page.page).join('、')}'
+                  '${plan.imagePageCount > plan.pages.length ? '（只读取了前 ${plan.pages.length} 页）' : ''}】',
             });
             for (final page in plan.pages) {
               parts.add({'type': 'text', 'text': '【PDF 第 ${page.page} 页】'});
