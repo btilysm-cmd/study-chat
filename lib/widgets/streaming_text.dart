@@ -59,6 +59,9 @@ class _StreamingTextState extends State<StreamingText> {
       _shown = widget.text.length;
       _done.clear();
     }
+    if (widget.text.startsWith('正在思考…') || widget.text.startsWith('正在准备附件…')) {
+      _shown = widget.text.length;
+    }
   }
 
   @override
@@ -190,7 +193,7 @@ class _StreamingTextState extends State<StreamingText> {
 
   List<InlineSpan> _inlineSpans(String text, TextStyle base) {
     final spans = <InlineSpan>[];
-    final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([^)\n]+?)\\\)');
+    final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([\s\S]+?)\\\)');
     var last = 0;
     for (final match in inline.allMatches(text)) {
       if (match.start > last) {

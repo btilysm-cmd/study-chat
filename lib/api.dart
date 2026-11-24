@@ -36,6 +36,7 @@ class ApiClient {
     required List<Map<String, dynamic>> messages,
     required String system,
     String? reasoningEffort,
+    void Function(String reasoning)? onReasoning,
   }) async* {
     final uri = Uri.parse('${config.root}/chat/completions');
     final request = http.Request('POST', uri)
@@ -77,6 +78,10 @@ class ApiClient {
       final choices = json['choices'] as List?;
       if (choices == null || choices.isEmpty) continue;
       final delta = (choices.first as Map)['delta'] as Map?;
+      final reasoning = delta?['reasoning_content'] ?? delta?['reasoning'];
+      if (reasoning is String && reasoning.isNotEmpty) {
+        onReasoning?.call(reasoning);
+      }
       final content = delta?['content'];
       if (content is String && content.isNotEmpty) yield content;
     }

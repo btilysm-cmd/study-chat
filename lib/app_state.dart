@@ -41,6 +41,9 @@ class AppState extends ChangeNotifier {
   StreamSubscription<String>? _streamSub;
   Completer<void>? _streamDone;
   bool _streamCancelled = false;
+  Timer? _thinkingTimer;
+  DateTime? _thinkingSince;
+  bool _contentStarted = false;
 
   bool isStreamingIn(Conversation conversation) =>
       streamingConversationId == conversation.id;
@@ -52,14 +55,22 @@ class AppState extends ChangeNotifier {
     // the plain-text streaming state.
     for (final conversation in conversations) {
       conversation.messages.removeWhere(
-        (message) => message.streaming && message.text.trim().isEmpty,
+        (message) =>
+            message.streaming &&
+            (message.text.trim().isEmpty ||
+                message.text.startsWith('正在思考…') ||
+                message.text.startsWith('正在准备附件…')),
       );
       for (final message in conversation.messages) {
         message.streaming = false;
       }
       for (final branch in conversation.branches) {
         branch.messages.removeWhere(
-          (message) => message.streaming && message.text.trim().isEmpty,
+          (message) =>
+              message.streaming &&
+              (message.text.trim().isEmpty ||
+                  message.text.startsWith('正在思考…') ||
+                  message.text.startsWith('正在准备附件…')),
         );
         for (final message in branch.messages) {
           message.streaming = false;
@@ -69,6 +80,54 @@ class AppState extends ChangeNotifier {
     ready = true;
     notifyListeners();
     unawaited(_persist());
+  }
+
+  void _beginThinking(ChatMessage live) {
+    _contentStarted = false;
+    _thinkingSince = DateTime.now();
+    live.text = '正在思考…';
+    notifyListeners();
+    _thinkingTimer?.cancel();
+    _thinkingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_contentStarted) return;
+      final since = _thinkingSince;
+      if (since == null) return;
+      live.text = '正在思考… ${DateTime.now().difference(since).inSeconds} 秒';
+      notifyListeners();
+    });
+  }
+
+  void _endThinking() {
+    _thinkingTimer?.cancel();
+    _thinkingTimer = null;
+    _thinkingSince = null;
+  }
+
+  String _visibleSoFar(ChatMessage live) {
+    final text = live.text.trim();
+    if (text.isEmpty || text == '正在准备附件…' || text.startsWith('正在思考…')) {
+      return '';
+    }
+    return text;
+  }
+
+  void _finishStopped(ChatMessage live) {
+    final text = _visibleSoFar(live);
+    live.text = text.isEmpty ? '[已中断]' : '$text\n\n[已中断]';
+  }
+
+  void _finishFailure(ChatMessage live, Object error) {
+    final text = _visibleSoFar(live);
+    final message = '生成失败：$error';
+    live.text = text.isEmpty ? message : '$text\n\n[$message]';
+  }
+
+  void _firstContent(ChatMessage live) {
+    if (_contentStarted) return;
+    _contentStarted = true;
+    _endThinking();
+    live.text = '';
+    notifyListeners();
   }
 
   Future<void> stopGeneration() async {
@@ -206,15 +265,12 @@ class AppState extends ChangeNotifier {
     try {
       final history = await _apiHistory(current, conversation);
       if (_streamCancelled) {
-        if (live.text.trim().isNotEmpty) {
-          live.text = '${live.text.trim()}\n\n[已中断]';
-        } else {
-          live.text = '[已中断]';
-        }
+        _finishStopped(live);
         return;
       }
       live.text = '';
       notifyListeners();
+      _beginThinking(live);
       final system =
           '$_mainSystem\n\n${_lengthHint(conversation.answerLength)}';
       final stream = api.streamChat(
@@ -225,6 +281,7 @@ class AppState extends ChangeNotifier {
       );
       _streamSub = stream.listen(
         (delta) {
+          _firstContent(live);
           live.text += delta;
           _tick();
         },
@@ -237,26 +294,15 @@ class AppState extends ChangeNotifier {
         cancelOnError: true,
       );
       await done.future;
-      if (_streamCancelled) {
-        live.text = live.text.trim().isEmpty
-            ? '[已中断]'
-            : '${live.text.trim()}\n\n[已中断]';
-      }
+      if (_streamCancelled) _finishStopped(live);
     } catch (error) {
       if (_streamCancelled) {
-        if (live.text.trim().isNotEmpty) {
-          live.text = '${live.text.trim()}\n\n[已中断]';
-        } else {
-          live.text = '[已中断]';
-        }
+        _finishStopped(live);
       } else {
-        final message = '生成失败：$error';
-        final current = live.text.trim();
-        live.text = current.isEmpty || current == '正在准备附件…'
-            ? message
-            : '$current\n\n[$message]';
+        _finishFailure(live, error);
       }
     } finally {
+      _endThinking();
       live.streaming = false;
       busy = false;
       streamingConversationId = null;
@@ -395,6 +441,7 @@ class AppState extends ChangeNotifier {
       '请直接回答当前问题。',
     ].join('\n\n');
 
+    _beginThinking(live);
     try {
       final stream = api.streamChat(
         config: current,
@@ -406,6 +453,7 @@ class AppState extends ChangeNotifier {
       );
       _streamSub = stream.listen(
         (delta) {
+          _firstContent(live);
           live.text += delta;
           _tick();
         },
@@ -418,24 +466,15 @@ class AppState extends ChangeNotifier {
         cancelOnError: true,
       );
       await done.future;
-      if (_streamCancelled) {
-        live.text = live.text.trim().isEmpty
-            ? '[已中断]'
-            : '${live.text.trim()}\n\n[已中断]';
-      }
+      if (_streamCancelled) _finishStopped(live);
     } catch (error) {
       if (_streamCancelled) {
-        live.text = live.text.trim().isEmpty
-            ? '[已中断]'
-            : '${live.text.trim()}\n\n[已中断]';
+        _finishStopped(live);
       } else {
-        final message = '生成失败：$error';
-        final current = live.text.trim();
-        live.text = current.isEmpty || current == '正在准备附件…'
-            ? message
-            : '$current\n\n[$message]';
+        _finishFailure(live, error);
       }
     } finally {
+      _endThinking();
       live.streaming = false;
       busy = false;
       streamingConversationId = null;

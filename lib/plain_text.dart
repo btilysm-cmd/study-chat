@@ -39,7 +39,7 @@ String readableText(String source) {
     (match) => '\n${_texToText(match[1] ?? match[2] ?? '')}\n',
   );
   text = text.replaceAllMapped(
-    RegExp(r'\$([^$\n]+?)\$|\\\(([^)\n]+?)\\\)'),
+    RegExp(r'\$([^$\n]+?)\$|\\\(([\s\S]+?)\\\)'),
     (match) => _texToText(match[1] ?? match[2] ?? ''),
   );
   text = text.replaceAllMapped(RegExp(r'\*\*(.+?)\*\*'), (m) => m[1]!);

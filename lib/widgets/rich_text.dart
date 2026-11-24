@@ -206,7 +206,7 @@ Widget _table(BuildContext context, List<List<String>> rows) {
 /// Inline math is kept in the text flow, but a long formula is promoted to a
 /// horizontally scrollable block so it can never overflow the screen.
 void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
-  final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([^)\n]+?)\\\)');
+  final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([\s\S]+?)\\\)');
   final spans = <InlineSpan>[];
   var last = 0;
   void flush() {
@@ -253,7 +253,7 @@ void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
 
 List<InlineSpan> _inlineSpans(BuildContext context, String text) {
   final spans = <InlineSpan>[];
-  final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([^)\n]+?)\\\)');
+  final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([\s\S]+?)\\\)');
   var last = 0;
   for (final match in inline.allMatches(text)) {
     if (match.start > last) {
