@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 
+import 'latex.dart';
 import 'rich_text.dart';
 
 /// Live stream renderer.
@@ -169,9 +169,9 @@ class _StreamingTextState extends State<StreamingText> {
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          child: Math.tex(
+          child: mathWidget(
             block.tex ?? '',
-            mathStyle: MathStyle.display,
+            display: true,
             textStyle: TextStyle(fontSize: 16, color: base.color),
           ),
         ),
@@ -204,9 +204,8 @@ class _StreamingTextState extends State<StreamingText> {
         spans.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: Math.tex(
+            child: mathWidget(
               tex,
-              mathStyle: MathStyle.text,
               textStyle: TextStyle(fontSize: 15.5, color: base.color),
             ),
           ),

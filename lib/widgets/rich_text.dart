@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
+
+import 'latex.dart';
 
 class RichMessage extends StatefulWidget {
   const RichMessage({
@@ -70,9 +71,9 @@ void _appendText(BuildContext context, List<Widget> widgets, String chunk) {
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            child: Math.tex(
+            child: mathWidget(
               tex,
-              mathStyle: MathStyle.display,
+              display: true,
               textStyle: const TextStyle(fontSize: 16),
             ),
           ),
@@ -104,6 +105,49 @@ void _appendParagraph(
       if (rows.isNotEmpty) widgets.add(_table(context, rows));
       continue;
     }
+    if (line.startsWith('>')) {
+      final quoted = <String>[];
+      while (i < lines.length && lines[i].trim().startsWith('>')) {
+        var text = lines[i].trim();
+        text = text.substring(1);
+        if (text.startsWith(' ')) text = text.substring(1);
+        quoted.add(text);
+        i++;
+      }
+      i--;
+      final body = quoted.join('\n').trim();
+      if (body.isNotEmpty) {
+        final scheme = Theme.of(context).colorScheme;
+        widgets.add(
+          Container(
+            margin: const EdgeInsets.symmetric(vertical: 6),
+            padding: const EdgeInsets.only(left: 12),
+            decoration: BoxDecoration(
+              border: Border(
+                left: BorderSide(
+                  color: scheme.primary.withOpacity(0.45),
+                  width: 3,
+                ),
+              ),
+            ),
+            child: RichMessage(text: body, selectable: false),
+          ),
+        );
+      }
+      continue;
+    }
+    if (_listItem(lines[i]) != null) {
+      final items = <_ListItem>[];
+      while (i < lines.length) {
+        final item = _listItem(lines[i]);
+        if (item == null) break;
+        items.add(item);
+        i++;
+      }
+      i--;
+      if (items.isNotEmpty) widgets.add(_listBlock(context, items));
+      continue;
+    }
     if (RegExp(r'^(-{3,}|\*{3,}|_{3,})$').hasMatch(line)) {
       widgets.add(const Divider(height: 22));
       continue;
@@ -131,6 +175,90 @@ void _appendParagraph(
     }
     _inlineParagraph(context, widgets, line);
   }
+}
+
+class _ListItem {
+  _ListItem(this.level, this.marker, this.text, this.task);
+
+  final int level;
+  final String marker;
+  final String text;
+  final bool? task;
+}
+
+_ListItem? _listItem(String raw) {
+  final match = RegExp(r'^(\s*)([-*+]|\d+[.)])\s+(.*)$').firstMatch(raw);
+  if (match == null) return null;
+  final indent = match.group(1)!.replaceAll('\t', '  ').length;
+  var text = match.group(3)!.trim();
+  bool? task;
+  final check = RegExp(r'^\[([ xX])\]\s*(.*)$').firstMatch(text);
+  if (check != null) {
+    task = check.group(1)!.toLowerCase() == 'x';
+    text = check.group(2)!.trim();
+  }
+  return _ListItem(
+    (indent / 2).floor().clamp(0, 4),
+    match.group(2)!,
+    text,
+    task,
+  );
+}
+
+Widget _listBlock(BuildContext context, List<_ListItem> items) {
+  final scheme = Theme.of(context).colorScheme;
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 4),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final item in items)
+          Padding(
+            padding: EdgeInsets.only(
+              left: item.level * 16.0,
+              top: 2,
+              bottom: 2,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 22,
+                  child: item.task != null
+                      ? Icon(
+                          item.task!
+                              ? Icons.check_box_rounded
+                              : Icons.check_box_outline_blank,
+                          size: 16,
+                          color: item.task!
+                              ? scheme.primary
+                              : scheme.onSurface.withOpacity(0.4),
+                        )
+                      : Text(
+                          RegExp(r'^\d').hasMatch(item.marker)
+                              ? item.marker
+                              : '•',
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            height: 1.55,
+                            color: scheme.onSurface.withOpacity(0.65),
+                          ),
+                        ),
+                ),
+                Expanded(
+                  child: Text.rich(
+                    TextSpan(
+                      style: const TextStyle(fontSize: 15, height: 1.6),
+                      children: _inlineSpans(context, item.text),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 bool _isTableStart(List<String> lines, int index) {
@@ -173,33 +301,36 @@ Widget _table(BuildContext context, List<List<String>> rows) {
     );
   }
 
+  final wide = header.length > 3;
+  final table = Table(
+    defaultColumnWidth: wide
+        ? const IntrinsicColumnWidth()
+        : const FlexColumnWidth(),
+    border: TableBorder.all(
+      color: scheme.outlineVariant.withOpacity(0.55),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    children: [
+      TableRow(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withOpacity(0.45),
+        ),
+        children: [for (final text in header) cell(text, isHeader: true)],
+      ),
+      for (final row in body)
+        TableRow(
+          children: [
+            for (var i = 0; i < header.length; i++)
+              cell(i < row.length ? row[i] : ''),
+          ],
+        ),
+    ],
+  );
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Table(
-        defaultColumnWidth: const IntrinsicColumnWidth(),
-        border: TableBorder.all(
-          color: scheme.outlineVariant.withOpacity(0.55),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        children: [
-          TableRow(
-            decoration: BoxDecoration(
-              color: scheme.surfaceContainerHighest.withOpacity(0.45),
-            ),
-            children: [for (final text in header) cell(text, isHeader: true)],
-          ),
-          for (final row in body)
-            TableRow(
-              children: [
-                for (var i = 0; i < header.length; i++)
-                  cell(i < row.length ? row[i] : ''),
-              ],
-            ),
-        ],
-      ),
-    ),
+    child: wide
+        ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: table)
+        : table,
   );
 }
 
@@ -237,11 +368,7 @@ void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.middle,
-          child: Math.tex(
-            tex,
-            mathStyle: MathStyle.text,
-            textStyle: const TextStyle(fontSize: 15.5),
-          ),
+          child: mathWidget(tex, textStyle: const TextStyle(fontSize: 15.5)),
         ),
       );
     }
@@ -263,11 +390,7 @@ List<InlineSpan> _inlineSpans(BuildContext context, String text) {
     spans.add(
       WidgetSpan(
         alignment: PlaceholderAlignment.middle,
-        child: Math.tex(
-          tex,
-          mathStyle: MathStyle.text,
-          textStyle: const TextStyle(fontSize: 15.5),
-        ),
+        child: mathWidget(tex, textStyle: const TextStyle(fontSize: 15.5)),
       ),
     );
     last = match.end;
@@ -301,9 +424,9 @@ Widget _mathBlock(String tex) {
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Math.tex(
+      child: mathWidget(
         tex,
-        mathStyle: MathStyle.display,
+        display: true,
         textStyle: const TextStyle(fontSize: 16),
       ),
     ),
