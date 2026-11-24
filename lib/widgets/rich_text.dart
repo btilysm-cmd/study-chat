@@ -455,3 +455,87 @@ Widget _codeBlock(BuildContext context, String code) {
     ),
   );
 }
+
+/// Long answers are split into pages instead of laying out thousands of
+/// formula and table widgets at once (which can freeze the UI thread).
+class LongRichMessage extends StatefulWidget {
+  const LongRichMessage({super.key, required this.text});
+
+  final String text;
+
+  @override
+  State<LongRichMessage> createState() => _LongRichMessageState();
+}
+
+class _LongRichMessageState extends State<LongRichMessage> {
+  static const _pageChars = 4000;
+  List<String> _pages = const [];
+  int _page = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pages = _splitPages(widget.text);
+  }
+
+  @override
+  void didUpdateWidget(covariant LongRichMessage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.text != widget.text) {
+      _pages = _splitPages(widget.text);
+      _page = 0;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_pages.length <= 1) return RichMessage(text: widget.text);
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        RichMessage(text: _pages[_page]),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text(
+              '长回答 · 第 ${_page + 1}/${_pages.length} 页',
+              style: TextStyle(
+                fontSize: 12,
+                color: scheme.onSurface.withOpacity(0.45),
+              ),
+            ),
+            const Spacer(),
+            TextButton.icon(
+              onPressed: _page > 0 ? () => setState(() => _page--) : null,
+              icon: const Icon(Icons.chevron_left, size: 18),
+              label: const Text('上页'),
+            ),
+            TextButton.icon(
+              onPressed: _page + 1 < _pages.length
+                  ? () => setState(() => _page++)
+                  : null,
+              icon: const Icon(Icons.chevron_right, size: 18),
+              label: const Text('下页'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  List<String> _splitPages(String source) {
+    final pages = <String>[];
+    final buffer = StringBuffer();
+    for (final line in source.split('\n')) {
+      if (buffer.length > 0 && buffer.length + line.length > _pageChars) {
+        pages.add(buffer.toString());
+        buffer.clear();
+      }
+      buffer.write(line);
+      buffer.write('\n');
+    }
+    if (buffer.isNotEmpty) pages.add(buffer.toString());
+    return pages.isEmpty ? [source] : pages;
+  }
+}

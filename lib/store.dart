@@ -71,10 +71,15 @@ class Store {
   Future<List<Conversation>> loadConversations() async {
     final doc = await _read();
     final list = doc['conversations'] as List? ?? const [];
-    return list
-        .whereType<Map>()
-        .map((item) => Conversation.fromJson(Map<String, dynamic>.from(item)))
-        .toList();
+    final result = <Conversation>[];
+    for (final item in list.whereType<Map>()) {
+      try {
+        result.add(Conversation.fromJson(Map<String, dynamic>.from(item)));
+      } catch (_) {
+        // One broken conversation should not take the others down.
+      }
+    }
+    return result;
   }
 
   Future<void> saveConversations(List<Conversation> conversations) async {

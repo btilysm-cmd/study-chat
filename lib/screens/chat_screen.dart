@@ -536,12 +536,22 @@ class _MessageTile extends StatelessWidget {
                       children: [...previous, if (current != null) current],
                     ),
                     child: message.streaming
-                        ? StreamingText(
-                            key: const ValueKey('streaming'),
-                            text: message.text,
-                          )
+                        ? message.text.length > 6000
+                              ? LongStreamingText(
+                                  key: const ValueKey('streaming-long'),
+                                  text: message.text,
+                                )
+                              : StreamingText(
+                                  key: const ValueKey('streaming'),
+                                  text: message.text,
+                                )
                         : message.text.trim().isEmpty
                         ? const SizedBox.shrink(key: ValueKey('empty'))
+                        : message.text.length > 6000
+                        ? LongRichMessage(
+                            key: const ValueKey('final-long'),
+                            text: message.text,
+                          )
                         : RichMessage(
                             key: const ValueKey('final'),
                             text: message.text,

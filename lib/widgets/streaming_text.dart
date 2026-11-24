@@ -217,3 +217,38 @@ class _StreamingTextState extends State<StreamingText> {
     return spans;
   }
 }
+
+/// While a very long answer is still streaming, render only its newest part.
+/// Laying out the whole answer on every chunk is what made the screen freeze.
+class LongStreamingText extends StatelessWidget {
+  const LongStreamingText({super.key, required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final tail = _tail(text, 4000);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '长回答接收中 · 显示最新内容',
+          style: TextStyle(
+            fontSize: 12,
+            color: scheme.onSurface.withOpacity(0.45),
+          ),
+        ),
+        const SizedBox(height: 6),
+        StreamingText(text: tail),
+      ],
+    );
+  }
+
+  static String _tail(String text, int limit) {
+    if (text.length <= limit) return text;
+    final cut = text.length - limit;
+    final line = text.indexOf('\n', cut);
+    return text.substring(line >= 0 ? line + 1 : cut);
+  }
+}
