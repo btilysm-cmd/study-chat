@@ -41,6 +41,8 @@ class _ChatScreenState extends State<ChatScreen>
   int _idleTicks = 0;
   GptMarkdownConfig? _mdConfig;
   ThemeData? _mdTheme;
+  GptMarkdownThemeData? _mdThemeData;
+  ThemeData? _mdThemeDataTheme;
 
   @override
   void initState() {
@@ -375,6 +377,62 @@ class _ChatScreenState extends State<ChatScreen>
     return _mdConfig!;
   }
 
+  GptMarkdownThemeData _markdownTheme(BuildContext context) {
+    final theme = Theme.of(context);
+    if (identical(theme, _mdThemeDataTheme) && _mdThemeData != null) {
+      return _mdThemeData!;
+    }
+    final scheme = theme.colorScheme;
+    final base = TextStyle(
+      color: scheme.onSurface,
+      fontSize: 15.5,
+      height: 1.65,
+    );
+    _mdThemeDataTheme = theme;
+    _mdThemeData = GptMarkdownThemeData(
+      brightness: theme.brightness,
+      h1: base.copyWith(
+        fontSize: 20,
+        fontWeight: FontWeight.w800,
+        height: 1.35,
+      ),
+      h2: base.copyWith(
+        fontSize: 18,
+        fontWeight: FontWeight.w800,
+        height: 1.35,
+      ),
+      h3: base.copyWith(
+        fontSize: 16.5,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+      ),
+      h4: base.copyWith(fontSize: 16, fontWeight: FontWeight.w700, height: 1.4),
+      h5: base.copyWith(
+        fontSize: 15.5,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+      ),
+      h6: base.copyWith(
+        fontSize: 15.5,
+        fontWeight: FontWeight.w700,
+        height: 1.4,
+      ),
+      autoAddDividerLineAfterH1: false,
+      linkColor: scheme.primary,
+      linkHoverColor: scheme.primary,
+      styleSheet: const GptMarkdownStyleSheet(
+        latex: LatexStyle(
+          textStyle: TextStyle(fontSize: 14.5),
+          scrollBlockHorizontally: true,
+        ),
+        codeBlock: CodeBlockStyle(fontSize: 13, highlightWhileStreaming: false),
+        heading: HeadingStyle(padding: EdgeInsets.only(top: 6, bottom: 2)),
+        blockSpacing: 10,
+      ),
+    );
+    return _mdThemeData!;
+  }
+
   Future<void> _openUrl(String url) async {
     final uri = Uri.tryParse(url);
     if (uri == null || !uri.hasScheme) return;
@@ -562,12 +620,17 @@ class _ChatScreenState extends State<ChatScreen>
                   children: [
                     NotificationListener<ScrollNotification>(
                       onNotification: _onScrollNotification,
-                      child: CustomScrollView(
-                        controller: _scroll,
-                        slivers: [
-                          const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                          ..._buildSlivers(context),
-                        ],
+                      child: GptMarkdownTheme(
+                        gptThemeData: _markdownTheme(context),
+                        child: CustomScrollView(
+                          controller: _scroll,
+                          slivers: [
+                            const SliverToBoxAdapter(
+                              child: SizedBox(height: 8),
+                            ),
+                            ..._buildSlivers(context),
+                          ],
+                        ),
                       ),
                     ),
                     if (!_stick)
