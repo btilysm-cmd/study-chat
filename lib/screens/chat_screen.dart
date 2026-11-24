@@ -413,7 +413,11 @@ class _ChatScreenState extends State<ChatScreen>
       slivers.add(
         SliverPadding(
           padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
-          sliver: SliverGptMarkdown(message.text, config: config),
+          sliver: SliverGptMarkdown(
+            message.text,
+            config: config,
+            useDollarSignsForLatex: true,
+          ),
         ),
       );
     }
