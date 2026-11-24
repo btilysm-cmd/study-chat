@@ -368,6 +368,9 @@ class _ChatScreenState extends State<ChatScreen>
         }
       },
       onImageTap: (url) => unawaited(_openUrl(url)),
+      styleSheet: const GptMarkdownStyleSheet(
+        latex: LatexStyle(scrollBlockHorizontally: true),
+      ),
     );
     return _mdConfig!;
   }
