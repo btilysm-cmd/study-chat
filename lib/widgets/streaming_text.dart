@@ -177,9 +177,9 @@ class _StreamingTextState extends State<StreamingText> {
 
   Widget _renderGrowing(String raw, TextStyle base) {
     final cleaned = raw
-        .replaceAllMapped(RegExp(r'^\s{0,3}#{1,6}\s+', multiLine: true), '')
+        .replaceAll(RegExp(r'^\s{0,3}#{1,6}\s+', multiLine: true), '')
         .replaceAll('**', '')
-        .replaceAllMapped(RegExp(r'^\s*[-*+]\s+', multiLine: true), '• ');
+        .replaceAll(RegExp(r'^\s*[-*+]\s+', multiLine: true), '• ');
     return Text(
       cleaned,
       style: base.copyWith(color: base.color?.withOpacity(0.92)),
