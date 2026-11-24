@@ -4,6 +4,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
+import 'rich_text.dart';
+
 /// Live stream renderer.
 ///
 /// Blocks are append-only while an answer streams: finished blocks (text or a
@@ -37,7 +39,9 @@ class _StreamingTextState extends State<StreamingText> {
   @override
   void initState() {
     super.initState();
-    _shown = min(widget.text.length, 8);
+    // When a screen is rebuilt mid-stream (leaving and coming back), show
+    // everything already received immediately; only new deltas are revealed.
+    _shown = widget.text.length;
     _timer = Timer.periodic(const Duration(milliseconds: 16), (_) {
       if (!mounted) return;
       final target = widget.text.length;
@@ -170,9 +174,7 @@ class _StreamingTextState extends State<StreamingText> {
         ),
       );
     }
-    return Text.rich(
-      TextSpan(style: base, children: _inlineSpans(block.raw, base)),
-    );
+    return RichMessage(text: block.raw, selectable: false);
   }
 
   Widget _renderGrowing(String raw, TextStyle base) {

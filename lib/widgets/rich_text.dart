@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 
 class RichMessage extends StatefulWidget {
-  const RichMessage({super.key, required this.text, this.streaming = false});
+  const RichMessage({
+    super.key,
+    required this.text,
+    this.streaming = false,
+    this.selectable = true,
+  });
 
   final String text;
   final bool streaming;
+  final bool selectable;
 
   @override
   State<RichMessage> createState() => _RichMessageState();
@@ -29,12 +35,11 @@ class _RichMessageState extends State<RichMessage> {
       _cachedText = body;
       _cachedBlocks = _blocks(context, body);
     }
-    return SelectionArea(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: _cachedBlocks!,
-      ),
+    final column = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: _cachedBlocks!,
     );
+    return widget.selectable ? SelectionArea(child: column) : column;
   }
 }
 
@@ -84,9 +89,21 @@ void _appendParagraph(
   List<Widget> widgets,
   String chunk,
 ) {
-  for (final raw in chunk.split('\n')) {
-    final line = raw.trim();
+  final lines = chunk.split('\n');
+  for (var i = 0; i < lines.length; i++) {
+    final line = lines[i].trim();
     if (line.isEmpty) continue;
+    if (_isTableStart(lines, i)) {
+      final rows = <List<String>>[];
+      while (i < lines.length && lines[i].trim().startsWith('|')) {
+        final cells = _tableCells(lines[i]);
+        if (!_isSeparatorRow(cells)) rows.add(cells);
+        i++;
+      }
+      i--;
+      if (rows.isNotEmpty) widgets.add(_table(context, rows));
+      continue;
+    }
     if (RegExp(r'^(-{3,}|\*{3,}|_{3,})$').hasMatch(line)) {
       widgets.add(const Divider(height: 22));
       continue;
@@ -114,6 +131,76 @@ void _appendParagraph(
     }
     _inlineParagraph(context, widgets, line);
   }
+}
+
+bool _isTableStart(List<String> lines, int index) {
+  if (index + 1 >= lines.length) return false;
+  if (!lines[index].trim().startsWith('|')) return false;
+  return _isSeparatorRow(_tableCells(lines[index + 1]));
+}
+
+List<String> _tableCells(String line) {
+  var raw = line.trim();
+  if (raw.startsWith('|')) raw = raw.substring(1);
+  if (raw.endsWith('|')) raw = raw.substring(0, raw.length - 1);
+  return raw.split('|').map((cell) => cell.trim()).toList();
+}
+
+bool _isSeparatorRow(List<String> cells) {
+  if (cells.isEmpty) return false;
+  return cells.every(
+    (cell) => RegExp(r'^:?-{3,}:?$').hasMatch(cell.replaceAll(' ', '')),
+  );
+}
+
+Widget _table(BuildContext context, List<List<String>> rows) {
+  final scheme = Theme.of(context).colorScheme;
+  final header = rows.first;
+  final body = rows.skip(1).toList();
+  Widget cell(String text, {bool isHeader = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      child: Text.rich(
+        TextSpan(
+          style: TextStyle(
+            fontSize: 14,
+            height: 1.45,
+            fontWeight: isHeader ? FontWeight.w700 : FontWeight.w400,
+          ),
+          children: _inlineSpans(context, text),
+        ),
+      ),
+    );
+  }
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Table(
+        defaultColumnWidth: const IntrinsicColumnWidth(),
+        border: TableBorder.all(
+          color: scheme.outlineVariant.withOpacity(0.55),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        children: [
+          TableRow(
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainerHighest.withOpacity(0.45),
+            ),
+            children: [for (final text in header) cell(text, isHeader: true)],
+          ),
+          for (final row in body)
+            TableRow(
+              children: [
+                for (var i = 0; i < header.length; i++)
+                  cell(i < row.length ? row[i] : ''),
+              ],
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Inline math is kept in the text flow, but a long formula is promoted to a
