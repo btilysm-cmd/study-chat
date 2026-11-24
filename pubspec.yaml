@@ -1,7 +1,7 @@
 name: study_chat
 description: 学习提问客户端（DeepSeek API + 分支追问）
 publish_to: "none"
-version: 0.6.8+21
+version: 0.6.9+22
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -17,6 +17,7 @@ dependencies:
   pdfrx: ^3.1.0
   image: ^4.5.0
   path_provider: ^2.1.4
+  url_launcher: ^6.3.0
 
 dev_dependencies:
   flutter_test:

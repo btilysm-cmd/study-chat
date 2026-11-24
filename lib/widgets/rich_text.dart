@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'latex.dart';
 
@@ -66,19 +67,9 @@ void _appendText(BuildContext context, List<Widget> widgets, String chunk) {
     _appendParagraph(context, widgets, chunk.substring(last, match.start));
     final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     if (tex.isNotEmpty) {
-      widgets.add(
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: mathWidget(
-              tex,
-              display: true,
-              textStyle: const TextStyle(fontSize: 16),
-            ),
-          ),
-        ),
-      );
+      widgets.add(const SizedBox(height: 2));
+      widgets.add(_mathBlock(tex));
+      widgets.add(const SizedBox(height: 2));
     }
     last = match.end;
   }
@@ -295,17 +286,17 @@ Widget _table(BuildContext context, List<List<String>> rows) {
             height: 1.45,
             fontWeight: isHeader ? FontWeight.w700 : FontWeight.w400,
           ),
-          children: _inlineSpans(context, text),
+          children: _inlineSpans(context, text, fontSize: 14),
         ),
       ),
     );
   }
 
-  final wide = header.length > 3;
   final table = Table(
-    defaultColumnWidth: wide
-        ? const IntrinsicColumnWidth()
-        : const FlexColumnWidth(),
+    defaultColumnWidth: const MaxColumnWidth(
+      IntrinsicColumnWidth(),
+      FixedColumnWidth(132),
+    ),
     border: TableBorder.all(
       color: scheme.outlineVariant.withOpacity(0.55),
       borderRadius: BorderRadius.circular(8),
@@ -328,9 +319,10 @@ Widget _table(BuildContext context, List<List<String>> rows) {
   );
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
-    child: wide
-        ? SingleChildScrollView(scrollDirection: Axis.horizontal, child: table)
-        : table,
+    child: _HScroll(
+      hint: header.length > 3 ? '左右滑动查看完整表格' : null,
+      child: table,
+    ),
   );
 }
 
@@ -358,7 +350,7 @@ void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
 
   for (final match in inline.allMatches(text)) {
     if (match.start > last) {
-      spans.addAll(_boldSpans(text.substring(last, match.start)));
+      spans.addAll(_styledSpans(context, text.substring(last, match.start)));
     }
     final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     if (tex.length > 32) {
@@ -374,61 +366,179 @@ void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
     }
     last = match.end;
   }
-  if (last < text.length) spans.addAll(_boldSpans(text.substring(last)));
+  if (last < text.length) {
+    spans.addAll(_styledSpans(context, text.substring(last)));
+  }
   flush();
 }
 
-List<InlineSpan> _inlineSpans(BuildContext context, String text) {
+final _inlinePattern = RegExp(
+  r'\\([\\`*_{}\[\]()#+\-.!~>|])'
+  r'|\*\*\*(.+?)\*\*\*'
+  r'|\*\*(.+?)\*\*'
+  r'|\*(.+?)\*'
+  r'|~~(.+?)~~'
+  r'|`([^`\n]+)`'
+  r'|\[([^\]]+)\]\(([^)\s]+)\)',
+);
+
+List<InlineSpan> _inlineSpans(
+  BuildContext context,
+  String text, {
+  double fontSize = 15.5,
+}) {
   final spans = <InlineSpan>[];
   final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([\s\S]+?)\\\)');
   var last = 0;
   for (final match in inline.allMatches(text)) {
     if (match.start > last) {
-      spans.addAll(_boldSpans(text.substring(last, match.start)));
+      spans.addAll(_styledSpans(context, text.substring(last, match.start)));
     }
     final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     spans.add(
       WidgetSpan(
         alignment: PlaceholderAlignment.middle,
-        child: mathWidget(tex, textStyle: const TextStyle(fontSize: 15.5)),
+        child: mathWidget(tex, textStyle: TextStyle(fontSize: fontSize)),
       ),
     );
     last = match.end;
   }
-  if (last < text.length) spans.addAll(_boldSpans(text.substring(last)));
+  if (last < text.length) {
+    spans.addAll(_styledSpans(context, text.substring(last)));
+  }
   return spans;
 }
 
-List<InlineSpan> _boldSpans(String text) {
+List<InlineSpan> _styledSpans(BuildContext context, String text) {
   final spans = <InlineSpan>[];
-  final bold = RegExp(r'\*\*(.+?)\*\*');
   var last = 0;
-  for (final match in bold.allMatches(text)) {
+  for (final match in _inlinePattern.allMatches(text)) {
+    if (match.start > last) {
+      spans.addAll(_plainSpans(text.substring(last, match.start)));
+    }
+    final escaped = match.group(1);
+    if (escaped != null) {
+      spans.add(TextSpan(text: escaped));
+    } else if (match.group(2) != null) {
+      spans.add(
+        TextSpan(
+          text: match.group(2),
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      );
+    } else if (match.group(3) != null) {
+      spans.add(
+        TextSpan(
+          text: match.group(3),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      );
+    } else if (match.group(4) != null) {
+      spans.add(
+        TextSpan(
+          text: match.group(4),
+          style: const TextStyle(fontStyle: FontStyle.italic),
+        ),
+      );
+    } else if (match.group(5) != null) {
+      spans.add(
+        TextSpan(
+          text: match.group(5),
+          style: const TextStyle(decoration: TextDecoration.lineThrough),
+        ),
+      );
+    } else if (match.group(6) != null) {
+      spans.add(
+        TextSpan(
+          text: match.group(6),
+          style: TextStyle(
+            fontFamily: 'monospace',
+            fontSize: 14,
+            backgroundColor: Theme.of(context)
+                .colorScheme
+                .surfaceContainerHighest
+                .withOpacity(0.7),
+          ),
+        ),
+      );
+    } else if (match.group(7) != null) {
+      final label = match.group(7)!;
+      final url = match.group(8)!;
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: GestureDetector(
+            onTap: () => _openLink(url),
+            child: Text(
+              label,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.primary,
+                decoration: TextDecoration.underline,
+                decorationColor: Theme.of(context).colorScheme.primary
+                    .withOpacity(0.5),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    last = match.end;
+  }
+  if (last < text.length) spans.addAll(_plainSpans(text.substring(last)));
+  return spans;
+}
+
+List<InlineSpan> _plainSpans(String text) {
+  final spans = <InlineSpan>[];
+  final run = RegExp(r'[^\s\u4e00-\u9fff]{28,}');
+  var last = 0;
+  for (final match in run.allMatches(text)) {
     if (match.start > last) {
       spans.add(TextSpan(text: text.substring(last, match.start)));
     }
-    spans.add(
-      TextSpan(
-        text: match.group(1),
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-    );
+    final value = match.group(0)!;
+    final broken = StringBuffer();
+    for (var i = 0; i < value.length; i++) {
+      if (i > 0 && i % 20 == 0) broken.write('\u200B');
+      broken.write(value[i]);
+    }
+    spans.add(TextSpan(text: broken.toString()));
     last = match.end;
   }
   if (last < text.length) spans.add(TextSpan(text: text.substring(last)));
   return spans;
 }
 
+Future<void> _openLink(String url) async {
+  final uri = Uri.tryParse(url);
+  if (uri == null || !uri.hasScheme) return;
+  try {
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  } catch (_) {}
+}
+
 Widget _mathBlock(String tex) {
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: mathWidget(
-        tex,
-        display: true,
-        textStyle: const TextStyle(fontSize: 16),
-      ),
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Center(
+              child: mathWidget(
+                tex,
+                display: true,
+                textStyle: const TextStyle(fontSize: 16),
+              ),
+            ),
+          ),
+        );
+      },
     ),
   );
 }
@@ -442,8 +552,10 @@ Widget _codeBlock(BuildContext context, String code) {
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.55),
       borderRadius: BorderRadius.circular(12),
     ),
-    child: SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    child: _HScroll(
+      hint: code.split('\n').any((line) => line.length > 48)
+          ? '左右滑动查看完整代码'
+          : null,
       child: Text(
         code,
         style: const TextStyle(
@@ -454,6 +566,55 @@ Widget _codeBlock(BuildContext context, String code) {
       ),
     ),
   );
+}
+
+class _HScroll extends StatefulWidget {
+  const _HScroll({required this.child, this.hint});
+
+  final Widget child;
+  final String? hint;
+
+  @override
+  State<_HScroll> createState() => _HScrollState();
+}
+
+class _HScrollState extends State<_HScroll> {
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final scroll = Scrollbar(
+      controller: _controller,
+      child: SingleChildScrollView(
+        controller: _controller,
+        scrollDirection: Axis.horizontal,
+        child: widget.child,
+      ),
+    );
+    final hint = widget.hint;
+    if (hint == null) return scroll;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          hint,
+          style: TextStyle(
+            fontSize: 11,
+            color: scheme.onSurface.withOpacity(0.42),
+          ),
+        ),
+        const SizedBox(height: 4),
+        scroll,
+      ],
+    );
+  }
 }
 
 /// Long answers are split into pages instead of laying out thousands of
