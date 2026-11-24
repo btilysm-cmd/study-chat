@@ -31,17 +31,12 @@ class _BranchScreenState extends State<BranchScreen>
   bool _stick = true;
   bool _dragging = false;
   bool _initialized = false;
+  int _idleTicks = 0;
 
   @override
   void initState() {
     super.initState();
     _follow = createTicker(_onFollowTick);
-    _scroll.addListener(() {
-      if (_dragging || !_scroll.hasClients) return;
-      final atBottom = _scroll.position.maxScrollExtent - _scroll.offset < 80;
-      if (atBottom != _stick) setState(() => _stick = atBottom);
-      if (atBottom) _scheduleFollow();
-    });
   }
 
   @override
@@ -59,12 +54,12 @@ class _BranchScreenState extends State<BranchScreen>
     final target = _scroll.position.maxScrollExtent;
     final current = _scroll.offset;
     final delta = target - current;
-    if (delta <= 0.8) {
-      _scroll.jumpTo(target);
-      _follow.stop();
+    if (delta <= 0.6) {
+      if (++_idleTicks > 30) _follow.stop();
       return;
     }
-    _scroll.jumpTo(current + delta * 0.3);
+    _idleTicks = 0;
+    _scroll.jumpTo(current + delta * 0.22);
   }
 
   void _scheduleFollow() {
@@ -77,6 +72,7 @@ class _BranchScreenState extends State<BranchScreen>
         _initialized = true;
         return;
       }
+      _idleTicks = 0;
       if (!_follow.isActive) _follow.start();
     });
   }
@@ -88,7 +84,8 @@ class _BranchScreenState extends State<BranchScreen>
       _stick = false;
       _follow.stop();
       if (mounted) setState(() {});
-    } else if (notification is ScrollEndNotification) {
+    } else if (notification is ScrollEndNotification &&
+        notification.dragDetails != null) {
       _dragging = false;
       if (_scroll.hasClients) {
         final atBottom = _scroll.position.maxScrollExtent - _scroll.offset < 80;
