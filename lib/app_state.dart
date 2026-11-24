@@ -237,6 +237,11 @@ class AppState extends ChangeNotifier {
         cancelOnError: true,
       );
       await done.future;
+      if (_streamCancelled) {
+        live.text = live.text.trim().isEmpty
+            ? '[已中断]'
+            : '${live.text.trim()}\n\n[已中断]';
+      }
     } catch (error) {
       if (_streamCancelled) {
         if (live.text.trim().isNotEmpty) {
@@ -413,6 +418,11 @@ class AppState extends ChangeNotifier {
         cancelOnError: true,
       );
       await done.future;
+      if (_streamCancelled) {
+        live.text = live.text.trim().isEmpty
+            ? '[已中断]'
+            : '${live.text.trim()}\n\n[已中断]';
+      }
     } catch (error) {
       if (_streamCancelled) {
         live.text = live.text.trim().isEmpty
