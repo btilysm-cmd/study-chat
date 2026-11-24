@@ -38,12 +38,12 @@ class _StreamingTextState extends State<StreamingText> {
   void initState() {
     super.initState();
     _shown = min(widget.text.length, 8);
-    _timer = Timer.periodic(const Duration(milliseconds: 40), (_) {
+    _timer = Timer.periodic(const Duration(milliseconds: 16), (_) {
       if (!mounted) return;
       final target = widget.text.length;
       if (_shown >= target) return;
       final remaining = target - _shown;
-      final step = max(1, (remaining * 0.3).ceil());
+      final step = max(2, min(48, (remaining * 0.16).ceil()));
       setState(() => _shown = min(target, _shown + step));
     });
   }
@@ -135,11 +135,13 @@ class _StreamingTextState extends State<StreamingText> {
   List<_Block> _parse(String source) {
     final result = <_Block>[];
     if (source.isEmpty) return result;
-    final display = RegExp(r'\$\$([\s\S]+?)\$\$');
+    final display = RegExp(r'\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]');
     var last = 0;
     for (final match in display.allMatches(source)) {
       _splitParagraphs(result, source.substring(last, match.start));
-      result.add(_Block.display((match.group(1) ?? '').trim()));
+      result.add(
+        _Block.display((match.group(1) ?? match.group(2) ?? '').trim()),
+      );
       last = match.end;
     }
     _splitParagraphs(result, source.substring(last));
@@ -174,21 +176,25 @@ class _StreamingTextState extends State<StreamingText> {
   }
 
   Widget _renderGrowing(String raw, TextStyle base) {
+    final cleaned = raw
+        .replaceAllMapped(RegExp(r'^\s{0,3}#{1,6}\s+', multiLine: true), '')
+        .replaceAll('**', '')
+        .replaceAllMapped(RegExp(r'^\s*[-*+]\s+', multiLine: true), '• ');
     return Text(
-      raw,
+      cleaned,
       style: base.copyWith(color: base.color?.withOpacity(0.92)),
     );
   }
 
   List<InlineSpan> _inlineSpans(String text, TextStyle base) {
     final spans = <InlineSpan>[];
-    final inline = RegExp(r'\$([^$\n]+?)\$');
+    final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([^)\n]+?)\\\)');
     var last = 0;
     for (final match in inline.allMatches(text)) {
       if (match.start > last) {
         spans.add(TextSpan(text: text.substring(last, match.start)));
       }
-      final tex = (match.group(1) ?? '').trim();
+      final tex = (match.group(1) ?? match.group(2) ?? '').trim();
       if (tex.isNotEmpty) {
         spans.add(
           WidgetSpan(

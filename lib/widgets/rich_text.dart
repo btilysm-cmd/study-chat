@@ -54,11 +54,11 @@ List<Widget> _blocks(BuildContext context, String source) {
 
 void _appendText(BuildContext context, List<Widget> widgets, String chunk) {
   if (chunk.trim().isEmpty) return;
-  final display = RegExp(r'\$\$([\s\S]+?)\$\$');
+  final display = RegExp(r'\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]');
   var last = 0;
   for (final match in display.allMatches(chunk)) {
     _appendParagraph(context, widgets, chunk.substring(last, match.start));
-    final tex = (match.group(1) ?? '').trim();
+    final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     if (tex.isNotEmpty) {
       widgets.add(
         Padding(
@@ -119,7 +119,7 @@ void _appendParagraph(
 /// Inline math is kept in the text flow, but a long formula is promoted to a
 /// horizontally scrollable block so it can never overflow the screen.
 void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
-  final inline = RegExp(r'\$([^$\n]+?)\$');
+  final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([^)\n]+?)\\\)');
   final spans = <InlineSpan>[];
   var last = 0;
   void flush() {
@@ -142,7 +142,7 @@ void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
     if (match.start > last) {
       spans.addAll(_boldSpans(text.substring(last, match.start)));
     }
-    final tex = (match.group(1) ?? '').trim();
+    final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     if (tex.length > 32) {
       flush();
       widgets.add(_mathBlock(tex));
@@ -166,13 +166,13 @@ void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
 
 List<InlineSpan> _inlineSpans(BuildContext context, String text) {
   final spans = <InlineSpan>[];
-  final inline = RegExp(r'\$([^$\n]+?)\$');
+  final inline = RegExp(r'\$([^$\n]+?)\$|\\\(([^)\n]+?)\\\)');
   var last = 0;
   for (final match in inline.allMatches(text)) {
     if (match.start > last) {
       spans.addAll(_boldSpans(text.substring(last, match.start)));
     }
-    final tex = (match.group(1) ?? '').trim();
+    final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     spans.add(
       WidgetSpan(
         alignment: PlaceholderAlignment.middle,

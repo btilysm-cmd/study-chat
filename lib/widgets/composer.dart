@@ -18,6 +18,9 @@ class Composer extends StatefulWidget {
     this.attachmentsEnabled = true,
     this.showModel = true,
     this.hint = '提问…',
+    this.onStop,
+    this.showStop = false,
+    this.notice,
   });
 
   final Future<void> Function(String text, List<Attachment> attachments) onSend;
@@ -28,6 +31,9 @@ class Composer extends StatefulWidget {
   final bool attachmentsEnabled;
   final bool showModel;
   final String hint;
+  final VoidCallback? onStop;
+  final bool showStop;
+  final String? notice;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -190,6 +196,38 @@ class _ComposerState extends State<Composer> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (widget.notice != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 2, 4, 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      size: 15,
+                      color: scheme.onSurface.withOpacity(0.55),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        widget.notice!,
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: scheme.onSurface.withOpacity(0.55),
+                        ),
+                      ),
+                    ),
+                    if (widget.onStop != null)
+                      TextButton(
+                        onPressed: widget.onStop,
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        child: const Text('中断'),
+                      ),
+                  ],
+                ),
+              ),
             if (_attachments.isNotEmpty)
               SizedBox(
                 height: 64,
@@ -251,10 +289,18 @@ class _ComposerState extends State<Composer> {
                   ),
                   child: IconButton(
                     padding: EdgeInsets.zero,
-                    onPressed: widget.enabled && !_sending
+                    onPressed: widget.showStop
+                        ? widget.onStop
+                        : widget.enabled && !_sending
                         ? () => unawaited(_send())
                         : null,
-                    icon: _sending
+                    icon: widget.showStop
+                        ? Icon(
+                            Icons.stop_rounded,
+                            color: scheme.surface,
+                            size: 22,
+                          )
+                        : _sending
                         ? SizedBox(
                             width: 18,
                             height: 18,
@@ -268,7 +314,7 @@ class _ComposerState extends State<Composer> {
                             color: scheme.surface,
                             size: 20,
                           ),
-                    tooltip: '发送',
+                    tooltip: widget.showStop ? '中断生成' : '发送',
                   ),
                 ),
               ],

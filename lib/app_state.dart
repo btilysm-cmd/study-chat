@@ -35,14 +35,78 @@ class AppState extends ChangeNotifier {
   List<Conversation> conversations = [];
   bool ready = false;
   bool busy = false;
+  String? streamingConversationId;
 
   Timer? _flush;
+  StreamSubscription<String>? _streamSub;
+  Completer<void>? _streamDone;
+  bool _streamCancelled = false;
+
+  bool isStreamingIn(Conversation conversation) =>
+      streamingConversationId == conversation.id;
 
   Future<void> init() async {
     config = await store.loadConfig();
     conversations = await store.loadConversations();
+    // A stream cannot survive a restart; don't leave half answers stuck in
+    // the plain-text streaming state.
+    for (final conversation in conversations) {
+      conversation.messages.removeWhere(
+        (message) => message.streaming && message.text.trim().isEmpty,
+      );
+      for (final message in conversation.messages) {
+        message.streaming = false;
+      }
+      for (final branch in conversation.branches) {
+        branch.messages.removeWhere(
+          (message) => message.streaming && message.text.trim().isEmpty,
+        );
+        for (final message in branch.messages) {
+          message.streaming = false;
+        }
+      }
+    }
     ready = true;
     notifyListeners();
+    unawaited(_persist());
+  }
+
+  Future<void> stopGeneration() async {
+    if (!busy) return;
+    _streamCancelled = true;
+    final sub = _streamSub;
+    _streamSub = null;
+    try {
+      await sub?.cancel();
+    } catch (_) {
+      // The socket may already be gone; the finally block still cleans up.
+    }
+    final done = _streamDone;
+    if (done != null && !done.isCompleted) done.complete();
+  }
+
+  void deleteMessage(
+    Conversation conversation,
+    ChatMessage message, {
+    bool withPair = false,
+  }) {
+    if (message.streaming) return;
+    final index = conversation.messages.indexOf(message);
+    if (index < 0) return;
+    final removed = <ChatMessage>{message};
+    if (withPair) {
+      if (message.role == 'user' && index + 1 < conversation.messages.length) {
+        final next = conversation.messages[index + 1];
+        if (next.role == 'assistant') removed.add(next);
+      } else if (message.role == 'assistant' && index > 0) {
+        final prev = conversation.messages[index - 1];
+        if (prev.role == 'user') removed.add(prev);
+      }
+    }
+    conversation.messages.removeWhere(removed.contains);
+    conversation.updatedAt = DateTime.now();
+    notifyListeners();
+    unawaited(_persist());
   }
 
   Future<void> saveConfig(ApiConfig next) async {
@@ -132,33 +196,68 @@ class AppState extends ChangeNotifier {
     conversation.messages.add(live);
     conversation.updatedAt = DateTime.now();
     busy = true;
+    streamingConversationId = conversation.id;
+    _streamCancelled = false;
+    final done = Completer<void>();
+    _streamDone = done;
     live.text = attachments.isEmpty ? '' : '正在准备附件…';
     notifyListeners();
 
     try {
       final history = await _apiHistory(current, conversation);
+      if (_streamCancelled) {
+        if (live.text.trim().isNotEmpty) {
+          live.text = '${live.text.trim()}\n\n[已中断]';
+        } else {
+          live.text = '[已中断]';
+        }
+        return;
+      }
       live.text = '';
       notifyListeners();
       final system =
           '$_mainSystem\n\n${_lengthHint(conversation.answerLength)}';
-      await for (final delta in api.streamChat(
+      final stream = api.streamChat(
         config: current,
         messages: history,
         system: system,
         reasoningEffort: conversation.thinking,
-      )) {
-        live.text += delta;
-        _tick();
-      }
+      );
+      _streamSub = stream.listen(
+        (delta) {
+          live.text += delta;
+          _tick();
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!done.isCompleted) done.completeError(error, stack);
+        },
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+        cancelOnError: true,
+      );
+      await done.future;
     } catch (error) {
-      final message = '生成失败：$error';
-      final current = live.text.trim();
-      live.text = current.isEmpty || current == '正在准备附件…'
-          ? message
-          : '$current\n\n[$message]';
+      if (_streamCancelled) {
+        if (live.text.trim().isNotEmpty) {
+          live.text = '${live.text.trim()}\n\n[已中断]';
+        } else {
+          live.text = '[已中断]';
+        }
+      } else {
+        final message = '生成失败：$error';
+        final current = live.text.trim();
+        live.text = current.isEmpty || current == '正在准备附件…'
+            ? message
+            : '$current\n\n[$message]';
+      }
     } finally {
       live.streaming = false;
       busy = false;
+      streamingConversationId = null;
+      _streamSub = null;
+      _streamDone = null;
+      _streamCancelled = false;
       _flush?.cancel();
       _flush = null;
       notifyListeners();
@@ -278,6 +377,10 @@ class AppState extends ChangeNotifier {
     branch.messages.add(live);
     conversation.updatedAt = DateTime.now();
     busy = true;
+    streamingConversationId = conversation.id;
+    _streamCancelled = false;
+    final done = Completer<void>();
+    _streamDone = done;
     notifyListeners();
 
     final prompt = [
@@ -288,26 +391,47 @@ class AppState extends ChangeNotifier {
     ].join('\n\n');
 
     try {
-      await for (final delta in api.streamChat(
+      final stream = api.streamChat(
         config: current,
         messages: [
           {'role': 'user', 'content': prompt},
         ],
         system: '$_branchSystem\n\n${_lengthHint(conversation.answerLength)}',
         reasoningEffort: conversation.thinking,
-      )) {
-        live.text += delta;
-        _tick();
-      }
+      );
+      _streamSub = stream.listen(
+        (delta) {
+          live.text += delta;
+          _tick();
+        },
+        onError: (Object error, StackTrace stack) {
+          if (!done.isCompleted) done.completeError(error, stack);
+        },
+        onDone: () {
+          if (!done.isCompleted) done.complete();
+        },
+        cancelOnError: true,
+      );
+      await done.future;
     } catch (error) {
-      final message = '生成失败：$error';
-      final current = live.text.trim();
-      live.text = current.isEmpty || current == '正在准备附件…'
-          ? message
-          : '$current\n\n[$message]';
+      if (_streamCancelled) {
+        live.text = live.text.trim().isEmpty
+            ? '[已中断]'
+            : '${live.text.trim()}\n\n[已中断]';
+      } else {
+        final message = '生成失败：$error';
+        final current = live.text.trim();
+        live.text = current.isEmpty || current == '正在准备附件…'
+            ? message
+            : '$current\n\n[$message]';
+      }
     } finally {
       live.streaming = false;
       busy = false;
+      streamingConversationId = null;
+      _streamSub = null;
+      _streamDone = null;
+      _streamCancelled = false;
       _flush?.cancel();
       _flush = null;
       notifyListeners();

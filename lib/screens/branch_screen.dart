@@ -180,6 +180,13 @@ class _BranchScreenState extends State<BranchScreen>
                 attachmentsEnabled: false,
                 showModel: false,
                 enabled: !widget.state.busy,
+                onStop: widget.state.stopGeneration,
+                showStop: widget.state.isStreamingIn(widget.conversation),
+                notice:
+                    widget.state.busy &&
+                        !widget.state.isStreamingIn(widget.conversation)
+                    ? '另一条对话正在生成'
+                    : null,
                 hint: '在这条分支里继续问…',
               ),
             ],

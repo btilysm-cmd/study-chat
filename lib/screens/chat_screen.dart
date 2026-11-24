@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../app_state.dart';
 import '../models.dart';
+import '../plain_text.dart';
 import '../widgets/appear.dart';
 import '../widgets/composer.dart';
 import '../widgets/rich_text.dart';
@@ -122,6 +125,33 @@ class _ChatScreenState extends State<ChatScreen>
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('$error')));
     }
+  }
+
+  void _copy(ChatMessage message) {
+    unawaited(
+      Clipboard.setData(ClipboardData(text: readableText(message.text))),
+    );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text('已复制为可读文本')));
+  }
+
+  bool _hasPair(ChatMessage message) {
+    final messages = widget.conversation.messages;
+    final index = messages.indexOf(message);
+    if (index < 0) return false;
+    if (message.role == 'user') {
+      return index + 1 < messages.length &&
+          messages[index + 1].role == 'assistant';
+    }
+    return index > 0 && messages[index - 1].role == 'user';
+  }
+
+  void _delete(ChatMessage message, {bool withPair = false}) {
+    widget.state.deleteMessage(
+      widget.conversation,
+      message,
+      withPair: withPair,
+    );
   }
 
   void _branch(ChatMessage message) {
@@ -373,11 +403,19 @@ class _ChatScreenState extends State<ChatScreen>
                               ),
                               child: _MessageTile(
                                 message: message,
+                                onCopy: () => _copy(message),
                                 onBranch:
                                     message.role == 'assistant' &&
                                         !message.streaming
                                     ? () => _branch(message)
                                     : null,
+                                onDeletePair:
+                                    message.streaming || !_hasPair(message)
+                                    ? null
+                                    : () => _delete(message, withPair: true),
+                                onDelete: message.streaming
+                                    ? null
+                                    : () => _delete(message),
                               ),
                             ),
                           );
@@ -404,6 +442,13 @@ class _ChatScreenState extends State<ChatScreen>
                 onPickModel: _pickModel,
                 model: widget.state.config?.model ?? 'deepseek-flash',
                 enabled: !widget.state.busy,
+                onStop: widget.state.stopGeneration,
+                showStop: widget.state.isStreamingIn(conversation),
+                notice:
+                    widget.state.busy &&
+                        !widget.state.isStreamingIn(conversation)
+                    ? '另一条对话正在生成，这里的记录不会受影响'
+                    : null,
                 hint: '向学习助手提问…',
               ),
             ],
@@ -415,9 +460,18 @@ class _ChatScreenState extends State<ChatScreen>
 }
 
 class _MessageTile extends StatelessWidget {
-  const _MessageTile({required this.message, this.onBranch});
+  const _MessageTile({
+    required this.message,
+    this.onCopy,
+    this.onDelete,
+    this.onDeletePair,
+    this.onBranch,
+  });
 
   final ChatMessage message;
+  final VoidCallback? onCopy;
+  final VoidCallback? onDelete;
+  final VoidCallback? onDeletePair;
   final VoidCallback? onBranch;
 
   @override
@@ -482,24 +536,56 @@ class _MessageTile extends StatelessWidget {
               ),
             ),
           ),
-          if (onBranch != null)
+          if (onCopy != null || onDelete != null || onBranch != null)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: TextButton.icon(
-                onPressed: onBranch,
-                icon: const Icon(Icons.account_tree_outlined, size: 15),
-                label: const Text('分支', style: TextStyle(fontSize: 12.5)),
-                style: TextButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: scheme.onSurface.withOpacity(0.45),
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                ),
+              padding: const EdgeInsets.only(top: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (onCopy != null)
+                    _action(scheme, Icons.copy_rounded, '复制', onCopy),
+                  if (onBranch != null)
+                    _action(
+                      scheme,
+                      Icons.account_tree_outlined,
+                      '分支',
+                      onBranch,
+                    ),
+                  if (onDeletePair != null)
+                    _action(
+                      scheme,
+                      Icons.delete_sweep_outlined,
+                      '删问答',
+                      onDeletePair,
+                    ),
+                  if (onDelete != null)
+                    _action(scheme, Icons.delete_outline, '删除', onDelete),
+                ],
               ),
             ),
         ],
       ),
     );
   }
+}
+
+Widget _action(
+  ColorScheme scheme,
+  IconData icon,
+  String label,
+  VoidCallback? onTap,
+) {
+  return TextButton.icon(
+    onPressed: onTap,
+    icon: Icon(icon, size: 14),
+    label: Text(label, style: const TextStyle(fontSize: 12)),
+    style: TextButton.styleFrom(
+      visualDensity: VisualDensity.compact,
+      foregroundColor: scheme.onSurface.withOpacity(0.42),
+      padding: const EdgeInsets.symmetric(horizontal: 7),
+      minimumSize: const Size(0, 30),
+    ),
+  );
 }
 
 class _AttachmentStrip extends StatelessWidget {
