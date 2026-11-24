@@ -182,7 +182,7 @@ class _BranchScreenState extends State<BranchScreen>
                             SliverPadding(
                               padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
                               sliver: SliverToBoxAdapter(
-                                child: _anchorCard(branch, scheme, config),
+                                child: _anchorCard(branch, scheme),
                               ),
                             ),
                             for (final message in branch.messages)
@@ -289,11 +289,7 @@ class _BranchScreenState extends State<BranchScreen>
     ];
   }
 
-  Widget _anchorCard(
-    Branch branch,
-    ColorScheme scheme,
-    GptMarkdownConfig config,
-  ) {
+  Widget _anchorCard(Branch branch, ColorScheme scheme) {
     return Container(
       decoration: BoxDecoration(
         color: scheme.surface,
@@ -321,8 +317,8 @@ class _BranchScreenState extends State<BranchScreen>
           const SizedBox(height: 8),
           GptMarkdown(
             branch.anchor,
-            config: config,
             useDollarSignsForLatex: true,
+            onLinkTap: (url, title) => unawaited(_openUrl(url)),
           ),
         ],
       ),
