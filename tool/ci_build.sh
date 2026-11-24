@@ -17,6 +17,6 @@ sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' "$WORK/android/app/build.
 cd "$WORK"
 flutter pub get
 flutter analyze || true
-flutter build apk --debug
+flutter build apk --release
 mkdir -p "$ROOT/dist"
-cp build/app/outputs/flutter-apk/app-debug.apk "$ROOT/dist/app-debug.apk"
+cp build/app/outputs/flutter-apk/app-release.apk "$ROOT/dist/app-release.apk"
