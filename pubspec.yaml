@@ -1,7 +1,7 @@
 name: study_chat
 description: 学习提问客户端（DeepSeek API + 分支追问）
 publish_to: "none"
-version: 0.7.0+24
+version: 0.8.0+25
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -17,6 +17,7 @@ dependencies:
   pdfrx: ^3.1.0
   image: ^4.5.0
   path_provider: ^2.1.4
+  gpt_markdown: ^1.4.1
   url_launcher: ^6.3.0
 
 dev_dependencies:

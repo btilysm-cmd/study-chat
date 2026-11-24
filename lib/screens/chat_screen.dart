@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../app_state.dart';
 import '../models.dart';
@@ -37,6 +39,8 @@ class _ChatScreenState extends State<ChatScreen>
   bool _dragging = false;
   bool _initialized = false;
   int _idleTicks = 0;
+  GptMarkdownConfig? _mdConfig;
+  ThemeData? _mdTheme;
 
   @override
   void initState() {
@@ -348,6 +352,160 @@ class _ChatScreenState extends State<ChatScreen>
     );
   }
 
+  GptMarkdownConfig _markdownConfig(BuildContext context) {
+    final theme = Theme.of(context);
+    if (identical(theme, _mdTheme) && _mdConfig != null) return _mdConfig!;
+    final scheme = theme.colorScheme;
+    _mdTheme = theme;
+    _mdConfig = GptMarkdownConfig(
+      style: TextStyle(fontSize: 15.5, height: 1.65, color: scheme.onSurface),
+      onLinkTap: (url, title) => unawaited(_openUrl(url)),
+      onCodeCopy: (code) {
+        unawaited(Clipboard.setData(ClipboardData(text: code)));
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('代码已复制')));
+        }
+      },
+      onImageTap: (url) => unawaited(_openUrl(url)),
+    );
+    return _mdConfig!;
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || !uri.hasScheme) return;
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
+  List<Widget> _assistantSlivers(
+    BuildContext context,
+    ChatMessage message,
+    GptMarkdownConfig config,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final slivers = <Widget>[];
+    if (message.attachments.isNotEmpty) {
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+          sliver: SliverToBoxAdapter(
+            child: _AttachmentStrip(attachments: message.attachments),
+          ),
+        ),
+      );
+    }
+    if (message.text.trim().isEmpty) {
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+          sliver: SliverToBoxAdapter(
+            child: Text(
+              message.streaming ? '…' : '',
+              style: const TextStyle(fontSize: 15.5, height: 1.65),
+            ),
+          ),
+        ),
+      );
+    } else {
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+          sliver: SliverGptMarkdown(message.text, config: config),
+        ),
+      );
+    }
+    if (message.sources.isNotEmpty) {
+      slivers.add(
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 0),
+          sliver: SliverToBoxAdapter(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (var i = 0; i < message.sources.length; i++)
+                  _sourceChip(context, scheme, i, message.sources[i]),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+    slivers.add(
+      SliverPadding(
+        padding: const EdgeInsets.fromLTRB(14, 2, 14, 18),
+        sliver: SliverToBoxAdapter(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _action(scheme, Icons.copy_rounded, '复制', () => _copy(message)),
+              if (message.role == 'assistant' && !message.streaming)
+                _action(
+                  scheme,
+                  Icons.account_tree_outlined,
+                  '分支',
+                  () => _branch(message),
+                ),
+              if (!message.streaming && _hasPair(message))
+                _action(
+                  scheme,
+                  Icons.delete_sweep_outlined,
+                  '删问答',
+                  () => _delete(message, withPair: true),
+                ),
+              if (!message.streaming)
+                _action(
+                  scheme,
+                  Icons.delete_outline,
+                  '删除',
+                  () => _delete(message),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return slivers;
+  }
+
+  List<Widget> _buildSlivers(BuildContext context) {
+    final config = _markdownConfig(context);
+    final slivers = <Widget>[];
+    for (final message in widget.conversation.messages) {
+      if (message.role == 'user') {
+        slivers.add(
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(14, 0, 14, 0),
+            sliver: SliverToBoxAdapter(
+              child: RepaintBoundary(
+                child: Appear(
+                  key: ValueKey(
+                    '${message.at.microsecondsSinceEpoch}-${message.role}',
+                  ),
+                  child: _MessageTile(
+                    message: message,
+                    sources: message.sources,
+                    onCopy: () => _copy(message),
+                    onDeletePair: message.streaming || !_hasPair(message)
+                        ? null
+                        : () => _delete(message, withPair: true),
+                    onDelete: message.streaming ? null : () => _delete(message),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      } else {
+        slivers.addAll(_assistantSlivers(context, message, config));
+      }
+    }
+    return slivers;
+  }
+
   @override
   Widget build(BuildContext context) {
     final conversation = widget.conversation;
@@ -397,37 +555,12 @@ class _ChatScreenState extends State<ChatScreen>
                   children: [
                     NotificationListener<ScrollNotification>(
                       onNotification: _onScrollNotification,
-                      child: ListView.builder(
+                      child: CustomScrollView(
                         controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(14, 8, 14, 18),
-                        itemCount: conversation.messages.length,
-                        itemBuilder: (context, index) {
-                          final message = conversation.messages[index];
-                          return RepaintBoundary(
-                            child: Appear(
-                              key: ValueKey(
-                                '${message.at.microsecondsSinceEpoch}-${message.role}',
-                              ),
-                              child: _MessageTile(
-                                message: message,
-                                sources: message.sources,
-                                onCopy: () => _copy(message),
-                                onBranch:
-                                    message.role == 'assistant' &&
-                                        !message.streaming
-                                    ? () => _branch(message)
-                                    : null,
-                                onDeletePair:
-                                    message.streaming || !_hasPair(message)
-                                    ? null
-                                    : () => _delete(message, withPair: true),
-                                onDelete: message.streaming
-                                    ? null
-                                    : () => _delete(message),
-                              ),
-                            ),
-                          );
-                        },
+                        slivers: [
+                          const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                          ..._buildSlivers(context),
+                        ],
                       ),
                     ),
                     if (!_stick)
