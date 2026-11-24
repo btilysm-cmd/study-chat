@@ -59,6 +59,7 @@ class AppState extends ChangeNotifier {
             message.streaming &&
             (message.text.trim().isEmpty ||
                 message.text.startsWith('正在思考…') ||
+                message.text.startsWith('正在搜索…') ||
                 message.text.startsWith('正在准备附件…')),
       );
       for (final message in conversation.messages) {
@@ -70,6 +71,7 @@ class AppState extends ChangeNotifier {
               message.streaming &&
               (message.text.trim().isEmpty ||
                   message.text.startsWith('正在思考…') ||
+                  message.text.startsWith('正在搜索…') ||
                   message.text.startsWith('正在准备附件…')),
         );
         for (final message in branch.messages) {
@@ -105,10 +107,37 @@ class AppState extends ChangeNotifier {
 
   String _visibleSoFar(ChatMessage live) {
     final text = live.text.trim();
-    if (text.isEmpty || text == '正在准备附件…' || text.startsWith('正在思考…')) {
+    if (text.isEmpty ||
+        text == '正在准备附件…' ||
+        text.startsWith('正在思考…') ||
+        text.startsWith('正在搜索…')) {
       return '';
     }
     return text;
+  }
+
+  String _searchContext(List<WebSource> sources) {
+    if (sources.isEmpty) return '';
+    final buffer = StringBuffer('\n\n【联网搜索结果】\n以下是刚刚检索到的网页，引用时请在句末标注 [编号]：\n');
+    for (var i = 0; i < sources.length; i++) {
+      final source = sources[i];
+      final summary = source.summary.length > 500
+          ? '${source.summary.substring(0, 500)}…'
+          : source.summary;
+      buffer.writeln('[${i + 1}] ${source.title}');
+      buffer.writeln('URL: ${source.url}');
+      if (source.date.isNotEmpty) buffer.writeln('时间: ${source.date}');
+      if (summary.isNotEmpty) buffer.writeln('摘要: $summary');
+      buffer.writeln();
+    }
+    buffer.writeln('只使用上面的资料回答；资料不足或与问题无关时明确说明，不要编造列表以外的来源。');
+    return buffer.toString();
+  }
+
+  void setWebSearch(Conversation conversation, bool enabled) {
+    conversation.webSearch = enabled;
+    notifyListeners();
+    unawaited(_persist());
   }
 
   void _finishStopped(ChatMessage live) {
@@ -268,11 +297,27 @@ class AppState extends ChangeNotifier {
         _finishStopped(live);
         return;
       }
+      final sources = <WebSource>[];
+      if (conversation.webSearch && question.isNotEmpty) {
+        live.text = '正在搜索…';
+        notifyListeners();
+        try {
+          sources.addAll(await api.searchWeb(config: current, query: question));
+        } catch (_) {
+          // A failed search should not block a normal answer.
+        }
+        if (_streamCancelled) {
+          _finishStopped(live);
+          return;
+        }
+        live.sources = sources;
+      }
       live.text = '';
       notifyListeners();
       _beginThinking(live);
+      final search = _searchContext(sources);
       final system =
-          '$_mainSystem\n\n${_lengthHint(conversation.answerLength)}';
+          '$_mainSystem\n\n${_lengthHint(conversation.answerLength)}$search';
       final stream = api.streamChat(
         config: current,
         messages: history,

@@ -4,6 +4,8 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'models.dart';
+
 class ApiConfig {
   ApiConfig({required this.baseUrl, required this.apiKey, required this.model});
 
@@ -85,6 +87,51 @@ class ApiClient {
       final content = delta?['content'];
       if (content is String && content.isNotEmpty) yield content;
     }
+  }
+
+  Future<List<WebSource>> searchWeb({
+    required ApiConfig config,
+    required String query,
+    int count = 5,
+  }) async {
+    final uri = Uri.parse('${config.root}/v1/tools/search');
+    final response = await _client
+        .post(
+          uri,
+          headers: {
+            'content-type': 'application/json',
+            'authorization': 'Bearer ${config.apiKey.trim()}',
+          },
+          body: jsonEncode({
+            'query': query,
+            'count': count,
+            'ori_question': query.length > 128
+                ? query.substring(0, 128)
+                : query,
+          }),
+        )
+        .timeout(const Duration(seconds: 25));
+    if (response.statusCode != 200) {
+      throw ApiException(_errorText(response.statusCode, response.body));
+    }
+    final json = jsonDecode(utf8.decode(response.bodyBytes)) as Map;
+    final raw = json['results'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final map = Map<String, dynamic>.from(item);
+          return WebSource(
+            title: (map['title'] as String? ?? '').trim(),
+            url: (map['url'] as String? ?? '').trim(),
+            summary:
+                (map['summary'] as String? ?? map['snippet'] as String? ?? '')
+                    .trim(),
+            date: (map['date'] as String? ?? '').trim(),
+          );
+        })
+        .where((source) => source.url.isNotEmpty)
+        .toList();
   }
 
   Future<String> uploadDocument({

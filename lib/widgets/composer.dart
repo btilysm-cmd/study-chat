@@ -21,6 +21,8 @@ class Composer extends StatefulWidget {
     this.onStop,
     this.showStop = false,
     this.notice,
+    this.webSearch = false,
+    this.onToggleWebSearch,
   });
 
   final Future<void> Function(String text, List<Attachment> attachments) onSend;
@@ -34,6 +36,8 @@ class Composer extends StatefulWidget {
   final VoidCallback? onStop;
   final bool showStop;
   final String? notice;
+  final bool webSearch;
+  final VoidCallback? onToggleWebSearch;
 
   @override
   State<Composer> createState() => _ComposerState();
@@ -353,6 +357,40 @@ class _ComposerState extends State<Composer> {
                               Icons.expand_less,
                               size: 16,
                               color: scheme.primary,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: widget.enabled ? widget.onToggleWebSearch : null,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 4,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.public,
+                              size: 14,
+                              color: widget.webSearch
+                                  ? scheme.primary
+                                  : scheme.onSurface.withOpacity(0.4),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              '联网',
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: widget.webSearch
+                                    ? scheme.primary
+                                    : scheme.onSurface.withOpacity(0.4),
+                              ),
                             ),
                           ],
                         ),

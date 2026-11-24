@@ -91,6 +91,34 @@ class Attachment {
   );
 }
 
+class WebSource {
+  WebSource({
+    required this.title,
+    required this.url,
+    this.summary = '',
+    this.date = '',
+  });
+
+  final String title;
+  final String url;
+  final String summary;
+  final String date;
+
+  Map<String, dynamic> toJson() => {
+    'title': title,
+    'url': url,
+    if (summary.isNotEmpty) 'summary': summary,
+    if (date.isNotEmpty) 'date': date,
+  };
+
+  factory WebSource.fromJson(Map<String, dynamic> json) => WebSource(
+    title: json['title'] as String? ?? '',
+    url: json['url'] as String? ?? '',
+    summary: json['summary'] as String? ?? '',
+    date: json['date'] as String? ?? '',
+  );
+}
+
 class ChatMessage {
   ChatMessage({
     required this.role,
@@ -98,20 +126,25 @@ class ChatMessage {
     DateTime? at,
     this.streaming = false,
     List<Attachment>? attachments,
+    List<WebSource>? sources,
   }) : at = at ?? DateTime.now(),
-       attachments = attachments ?? [];
+       attachments = attachments ?? [],
+       sources = sources ?? [];
 
   final String role;
   String text;
   final DateTime at;
   bool streaming;
   List<Attachment> attachments;
+  List<WebSource> sources;
 
   Map<String, dynamic> toJson() => {
     'role': role,
     'text': text,
     'at': at.millisecondsSinceEpoch,
     'attachments': attachments.map((item) => item.toJson()).toList(),
+    if (sources.isNotEmpty)
+      'sources': sources.map((item) => item.toJson()).toList(),
   };
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -121,6 +154,10 @@ class ChatMessage {
     attachments: ((json['attachments'] as List?) ?? const [])
         .whereType<Map>()
         .map((item) => Attachment.fromJson(Map<String, dynamic>.from(item)))
+        .toList(),
+    sources: ((json['sources'] as List?) ?? const [])
+        .whereType<Map>()
+        .map((item) => WebSource.fromJson(Map<String, dynamic>.from(item)))
         .toList(),
   );
 }
@@ -173,6 +210,7 @@ class Conversation {
     List<Branch>? branches,
     this.answerLength = 'medium',
     this.thinking = 'high',
+    this.webSearch = false,
   }) : createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now(),
        messages = messages ?? [],
@@ -187,6 +225,7 @@ class Conversation {
   List<Branch> branches;
   String answerLength;
   String thinking;
+  bool webSearch;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -198,6 +237,7 @@ class Conversation {
     'branches': branches.map((branch) => branch.toJson()).toList(),
     'answerLength': answerLength,
     'thinking': thinking,
+    'webSearch': webSearch,
   };
 
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
@@ -218,6 +258,7 @@ class Conversation {
         .toList(),
     answerLength: json['answerLength'] as String? ?? 'medium',
     thinking: json['thinking'] as String? ?? 'high',
+    webSearch: json['webSearch'] as bool? ?? false,
   );
 }
 

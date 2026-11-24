@@ -128,9 +128,16 @@ class _ChatScreenState extends State<ChatScreen>
   }
 
   void _copy(ChatMessage message) {
-    unawaited(
-      Clipboard.setData(ClipboardData(text: readableText(message.text))),
-    );
+    var text = readableText(message.text);
+    if (message.sources.isNotEmpty) {
+      final sources = <String>[];
+      for (var i = 0; i < message.sources.length; i++) {
+        final source = message.sources[i];
+        sources.add('[${i + 1}] ${source.title}\n${source.url}');
+      }
+      text = '$text\n\n来源：\n${sources.join('\n')}';
+    }
+    unawaited(Clipboard.setData(ClipboardData(text: text)));
     ScaffoldMessenger.of(context)
         .showSnackBar(const SnackBar(content: Text('已复制为可读文本')));
   }
@@ -403,6 +410,7 @@ class _ChatScreenState extends State<ChatScreen>
                               ),
                               child: _MessageTile(
                                 message: message,
+                                sources: message.sources,
                                 onCopy: () => _copy(message),
                                 onBranch:
                                     message.role == 'assistant' &&
@@ -444,6 +452,11 @@ class _ChatScreenState extends State<ChatScreen>
                 enabled: !widget.state.busy,
                 onStop: widget.state.stopGeneration,
                 showStop: widget.state.isStreamingIn(conversation),
+                webSearch: conversation.webSearch,
+                onToggleWebSearch: () => widget.state.setWebSearch(
+                  conversation,
+                  !conversation.webSearch,
+                ),
                 notice:
                     widget.state.busy &&
                         !widget.state.isStreamingIn(conversation)
@@ -462,6 +475,7 @@ class _ChatScreenState extends State<ChatScreen>
 class _MessageTile extends StatelessWidget {
   const _MessageTile({
     required this.message,
+    this.sources = const [],
     this.onCopy,
     this.onDelete,
     this.onDeletePair,
@@ -469,6 +483,7 @@ class _MessageTile extends StatelessWidget {
   });
 
   final ChatMessage message;
+  final List<WebSource> sources;
   final VoidCallback? onCopy;
   final VoidCallback? onDelete;
   final VoidCallback? onDeletePair;
@@ -536,6 +551,18 @@ class _MessageTile extends StatelessWidget {
               ),
             ),
           ),
+          if (sources.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (var i = 0; i < sources.length; i++)
+                    _sourceChip(context, scheme, i, sources[i]),
+                ],
+              ),
+            ),
           if (onCopy != null || onDelete != null || onBranch != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
@@ -567,6 +594,39 @@ class _MessageTile extends StatelessWidget {
       ),
     );
   }
+}
+
+Widget _sourceChip(
+  BuildContext context,
+  ColorScheme scheme,
+  int index,
+  WebSource source,
+) {
+  final title = source.title.trim().isEmpty ? source.url : source.title.trim();
+  return InkWell(
+    borderRadius: BorderRadius.circular(8),
+    onTap: () {
+      unawaited(Clipboard.setData(ClipboardData(text: source.url)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('来源链接已复制')));
+    },
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withOpacity(0.45),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: scheme.outlineVariant.withOpacity(0.5)),
+      ),
+      child: Text(
+        '[${index + 1}] ${title.length > 28 ? '${title.substring(0, 28)}…' : title}',
+        style: TextStyle(
+          fontSize: 11.5,
+          color: scheme.primary,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    ),
+  );
 }
 
 Widget _action(
