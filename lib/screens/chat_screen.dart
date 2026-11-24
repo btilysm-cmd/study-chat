@@ -472,6 +472,27 @@ class _ChatScreenState extends State<ChatScreen>
   }
 }
 
+bool _needsPlainStream(String text) {
+  if (text.length > 1500) return true;
+  final displays = RegExp(r'\$\$|\\\[').allMatches(text).length;
+  final inline = RegExp(r'\$[^$\n]+?\$|\\\([\s\S]+?\\\)')
+      .allMatches(text)
+      .length;
+  return displays >= 6 || inline >= 24;
+}
+
+Widget _messageBody(ChatMessage message) {
+  if (message.streaming) {
+    return _needsPlainStream(message.text)
+        ? LongStreamingText(text: message.text)
+        : StreamingText(text: message.text);
+  }
+  if (message.text.trim().isEmpty) return const SizedBox.shrink();
+  return message.text.length > 6000
+      ? LongRichMessage(text: message.text)
+      : RichMessage(text: message.text);
+}
+
 class _MessageTile extends StatelessWidget {
   const _MessageTile({
     required this.message,
@@ -527,36 +548,7 @@ class _MessageTile extends StatelessWidget {
                     if (message.text.trim().isNotEmpty)
                       const SizedBox(height: 8),
                   ],
-                  AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 260),
-                    switchInCurve: Curves.easeOutCubic,
-                    switchOutCurve: Curves.easeIn,
-                    layoutBuilder: (current, previous) => Stack(
-                      alignment: AlignmentDirectional.topStart,
-                      children: [...previous, if (current != null) current],
-                    ),
-                    child: message.streaming
-                        ? message.text.length > 6000
-                              ? LongStreamingText(
-                                  key: const ValueKey('streaming-long'),
-                                  text: message.text,
-                                )
-                              : StreamingText(
-                                  key: const ValueKey('streaming'),
-                                  text: message.text,
-                                )
-                        : message.text.trim().isEmpty
-                        ? const SizedBox.shrink(key: ValueKey('empty'))
-                        : message.text.length > 6000
-                        ? LongRichMessage(
-                            key: const ValueKey('final-long'),
-                            text: message.text,
-                          )
-                        : RichMessage(
-                            key: const ValueKey('final'),
-                            text: message.text,
-                          ),
-                  ),
+                  _messageBody(message),
                 ],
               ),
             ),

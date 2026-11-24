@@ -68,7 +68,7 @@ void _appendText(BuildContext context, List<Widget> widgets, String chunk) {
     final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     if (tex.isNotEmpty) {
       widgets.add(const SizedBox(height: 2));
-      widgets.add(_mathBlock(tex));
+      widgets.add(_mathBlock(context, tex));
       widgets.add(const SizedBox(height: 2));
     }
     last = match.end;
@@ -355,7 +355,7 @@ void _inlineParagraph(BuildContext context, List<Widget> widgets, String text) {
     final tex = (match.group(1) ?? match.group(2) ?? '').trim();
     if (tex.length > 32) {
       flush();
-      widgets.add(_mathBlock(tex));
+      widgets.add(_mathBlock(context, tex));
     } else {
       spans.add(
         WidgetSpan(
@@ -520,25 +520,22 @@ Future<void> _openLink(String url) async {
   } catch (_) {}
 }
 
-Widget _mathBlock(String tex) {
+Widget _mathBlock(BuildContext context, String tex) {
+  final width = MediaQuery.sizeOf(context).width;
   return Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
-    child: LayoutBuilder(
-      builder: (context, constraints) {
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minWidth: constraints.maxWidth),
-            child: Center(
-              child: mathWidget(
-                tex,
-                display: true,
-                textStyle: const TextStyle(fontSize: 16),
-              ),
-            ),
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(minWidth: width),
+        child: Center(
+          child: mathWidget(
+            tex,
+            display: true,
+            textStyle: const TextStyle(fontSize: 16),
           ),
-        );
-      },
+        ),
+      ),
     ),
   );
 }
@@ -568,37 +565,20 @@ Widget _codeBlock(BuildContext context, String code) {
   );
 }
 
-class _HScroll extends StatefulWidget {
+class _HScroll extends StatelessWidget {
   const _HScroll({required this.child, this.hint});
 
   final Widget child;
   final String? hint;
 
   @override
-  State<_HScroll> createState() => _HScrollState();
-}
-
-class _HScrollState extends State<_HScroll> {
-  final _controller = ScrollController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final scroll = Scrollbar(
-      controller: _controller,
-      child: SingleChildScrollView(
-        controller: _controller,
-        scrollDirection: Axis.horizontal,
-        child: widget.child,
-      ),
+    final scroll = SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: child,
     );
-    final hint = widget.hint;
+    final hint = this.hint;
     if (hint == null) return scroll;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -655,7 +635,7 @@ class _LongRichMessageState extends State<LongRichMessage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        RichMessage(text: _pages[_page]),
+        RichMessage(text: _pages[_page], selectable: false),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -688,13 +668,18 @@ class _LongRichMessageState extends State<LongRichMessage> {
   List<String> _splitPages(String source) {
     final pages = <String>[];
     final buffer = StringBuffer();
+    var displays = 0;
     for (final line in source.split('\n')) {
-      if (buffer.length > 0 && buffer.length + line.length > _pageChars) {
+      final count = RegExp(r'\$\$|\\\[').allMatches(line).length;
+      if (buffer.length > 0 &&
+          (buffer.length + line.length > _pageChars || displays + count > 8)) {
         pages.add(buffer.toString());
         buffer.clear();
+        displays = 0;
       }
       buffer.write(line);
       buffer.write('\n');
+      displays += count;
     }
     if (buffer.isNotEmpty) pages.add(buffer.toString());
     return pages.isEmpty ? [source] : pages;

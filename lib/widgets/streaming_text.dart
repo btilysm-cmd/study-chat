@@ -218,8 +218,9 @@ class _StreamingTextState extends State<StreamingText> {
   }
 }
 
-/// While a very long answer is still streaming, render only its newest part.
-/// Laying out the whole answer on every chunk is what made the screen freeze.
+/// While a very long or formula-dense answer is still streaming, render only
+/// plain text of its newest part. Rich layout of a growing answer is what made
+/// the UI freeze; the finished answer is paged and typeset afterwards.
 class LongStreamingText extends StatelessWidget {
   const LongStreamingText({super.key, required this.text});
 
@@ -233,14 +234,14 @@ class LongStreamingText extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '长回答接收中 · 显示最新内容',
+          '长回答接收中 · 显示最新内容（完成后排版）',
           style: TextStyle(
             fontSize: 12,
             color: scheme.onSurface.withOpacity(0.45),
           ),
         ),
         const SizedBox(height: 6),
-        StreamingText(text: tail),
+        Text(tail, style: const TextStyle(fontSize: 15, height: 1.6)),
       ],
     );
   }
