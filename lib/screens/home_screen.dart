@@ -315,7 +315,6 @@ class HomeScreen extends StatelessWidget {
       final files = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['json'],
-        withData: true,
       );
       if (files.isEmpty) return;
       final file = files.first;
