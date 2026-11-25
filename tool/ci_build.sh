@@ -32,12 +32,15 @@ python3 - "$WORK/android/app/src/main/AndroidManifest.xml" <<'PY'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-if 'android.permission.INTERNET' not in s:
-    s = s.replace(
-        '<application',
-        '<uses-permission android:name="android.permission.INTERNET"/>\n    <application',
-        1,
+if 'android.permission.MANAGE_EXTERNAL_STORAGE' not in s:
+    perms = (
+        '<uses-permission android:name="android.permission.INTERNET"/>\n'
+        '    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>\n'
+        '    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" '
+        'android:maxSdkVersion="32"/>\n'
+        '    <application'
     )
+    s = s.replace('<application', perms, 1)
     open(p, 'w').write(s)
 PY
 cd "$WORK"

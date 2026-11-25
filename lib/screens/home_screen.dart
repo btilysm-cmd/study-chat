@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 import '../app_state.dart';
 import '../models.dart';
@@ -29,7 +31,193 @@ class HomeScreen extends StatelessWidget {
     _open(context, conversation);
   }
 
-  Future<void> _import(BuildContext context) async {
+  Future<void> _showImportSheet(BuildContext context) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '导入对话',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_outlined),
+              title: const Text('从 下载/DSH-Go 导入'),
+              subtitle: const Text('自动列出 DSH 打包的对话，不用翻文件管理器'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                unawaited(_scanDownloads(context));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file_outlined),
+              title: const Text('选择 JSON 文件'),
+              subtitle: const Text('从文件管理器手动选'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                unawaited(_pickFile(context));
+              },
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _ensureStoragePermission() async {
+    final manage = await Permission.manageExternalStorage.status;
+    if (manage.isGranted) return true;
+    final requested = await Permission.manageExternalStorage.request();
+    if (requested.isGranted) return true;
+    final storage = await Permission.storage.request();
+    return storage.isGranted;
+  }
+
+  Future<void> _scanDownloads(BuildContext context) async {
+    try {
+      final allowed = await _ensureStoragePermission();
+      if (!allowed) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('没有存储权限，改用文件选择')));
+        await _pickFile(context);
+        return;
+      }
+      final dirs = <String>{
+        '/sdcard/Download/DSH-Go',
+        '/storage/emulated/0/Download/DSH-Go',
+      };
+      final found = <_PackageInfo>[];
+      for (final path in dirs) {
+        final dir = Directory(path);
+        if (!dir.existsSync()) continue;
+        for (final entry in dir.listSync()) {
+          if (entry is! File || !entry.path.toLowerCase().endsWith('.json')) {
+            continue;
+          }
+          final info = await _readPackage(entry);
+          if (info != null) found.add(info);
+        }
+      }
+      found.sort((a, b) => b.modified.compareTo(a.modified));
+      if (!context.mounted) return;
+      if (found.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('下载/DSH-Go 里没有对话包，先在 DSH 里点「打包到学习问答」')),
+        );
+        return;
+      }
+      await showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheetContext) => SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            padding: const EdgeInsets.only(bottom: 16),
+            children: [
+              const Padding(
+                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '选择要导入的对话',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ),
+              for (final info in found.take(30))
+                ListTile(
+                  leading: const Icon(Icons.chat_bubble_outline),
+                  title: Text(
+                    info.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    '${info.messages.length} 条消息 · ${_formatStamp(info.modified)}',
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _openPackage(context, info);
+                  },
+                ),
+            ],
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('扫描失败：$error')));
+    }
+  }
+
+  String _formatStamp(DateTime time) {
+    final now = DateTime.now();
+    final sameDay =
+        now.year == time.year && now.month == time.month && now.day == time.day;
+    final hm =
+        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+    return sameDay ? '今天 $hm' : '${time.month}-${time.day} $hm';
+  }
+
+  Future<_PackageInfo?> _readPackage(File file) async {
+    try {
+      final stat = await file.stat();
+      if (stat.size > 8 * 1024 * 1024) return null;
+      final bytes = await file.readAsBytes();
+      final parsed = _parsePackage(bytes);
+      if (parsed == null) return null;
+      return _PackageInfo(
+        file: file,
+        title: parsed.$1,
+        messages: parsed.$2,
+        modified: stat.modified,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  (String, List<ChatMessage>)? _parsePackage(List<int> bytes) {
+    final doc = jsonDecode(utf8.decode(bytes));
+    if (doc is! Map) return null;
+    final rawMessages = doc['messages'];
+    if (rawMessages is! List || rawMessages.isEmpty) return null;
+    final messages = <ChatMessage>[];
+    for (final item in rawMessages) {
+      if (item is! Map) continue;
+      final role = item['role'] == 'user' ? 'user' : 'assistant';
+      final text = (item['text'] ?? item['content'] ?? '').toString().trim();
+      if (text.isEmpty) continue;
+      messages.add(ChatMessage(role: role, text: text));
+    }
+    if (messages.isEmpty) return null;
+    var title = (doc['title'] ?? doc['name'] ?? '').toString().trim();
+    if (title.isEmpty) {
+      title = summarizeTitle(
+        messages
+            .firstWhere(
+              (message) => message.role == 'user',
+              orElse: () => messages.first,
+            )
+            .text,
+      );
+    }
+    return (title, messages);
+  }
+
+  Future<void> _pickFile(BuildContext context) async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -46,42 +234,31 @@ class HomeScreen extends StatelessWidget {
       if (bytes.length > 8 * 1024 * 1024) {
         throw const FormatException('文件太大（上限 8 MB）');
       }
-      final doc = jsonDecode(utf8.decode(bytes));
-      if (doc is! Map) throw const FormatException('不是有效的对话包');
-      final rawMessages = doc['messages'];
-      if (rawMessages is! List || rawMessages.isEmpty) {
-        throw const FormatException('对话包里没有消息');
-      }
-      final messages = <ChatMessage>[];
-      for (final item in rawMessages) {
-        if (item is! Map) continue;
-        final role = item['role'] == 'user' ? 'user' : 'assistant';
-        final text = (item['text'] ?? item['content'] ?? '').toString().trim();
-        if (text.isEmpty) continue;
-        messages.add(ChatMessage(role: role, text: text));
-      }
-      if (messages.isEmpty) throw const FormatException('对话包里没有可用文本');
-      final title = (doc['title'] ?? doc['name'] ?? '').toString().trim();
-      final conversation = state.importConversation(
-        title: title.isEmpty
-            ? summarizeTitle(
-                messages
-                    .firstWhere(
-                      (message) => message.role == 'user',
-                      orElse: () => messages.first,
-                    )
-                    .text,
-              )
-            : title,
-        messages: messages,
-      );
+      final parsed = _parsePackage(bytes);
+      if (parsed == null) throw const FormatException('对话包里没有可用文本');
       if (!context.mounted) return;
-      _open(context, conversation);
+      _importParsed(context, parsed.$1, parsed.$2);
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('导入失败：$error')));
     }
+  }
+
+  void _openPackage(BuildContext context, _PackageInfo info) {
+    _importParsed(context, info.title, info.messages);
+  }
+
+  void _importParsed(
+    BuildContext context,
+    String title,
+    List<ChatMessage> messages,
+  ) {
+    final conversation = state.importConversation(
+      title: title,
+      messages: messages,
+    );
+    _open(context, conversation);
   }
 
   void _settings(BuildContext context) {
@@ -121,7 +298,7 @@ class HomeScreen extends StatelessWidget {
               IconButton(
                 tooltip: '导入对话',
                 icon: const Icon(Icons.file_download_outlined),
-                onPressed: () => _import(context),
+                onPressed: () => _showImportSheet(context),
               ),
               IconButton(
                 tooltip: '设置',
@@ -344,4 +521,18 @@ class _ConversationTile extends StatelessWidget {
     }
     return '${time.month}-${time.day}';
   }
+}
+
+class _PackageInfo {
+  const _PackageInfo({
+    required this.file,
+    required this.title,
+    required this.messages,
+    required this.modified,
+  });
+
+  final File file;
+  final String title;
+  final List<ChatMessage> messages;
+  final DateTime modified;
 }
