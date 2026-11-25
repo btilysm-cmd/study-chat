@@ -88,9 +88,28 @@ class HomeScreen extends StatelessWidget {
       final allowed = await _ensureStoragePermission();
       if (!allowed) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('没有存储权限，改用文件选择')));
-        await _pickFile(context);
+        final goSettings = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('需要读取下载目录'),
+            content: const Text('授权「所有文件访问」后，学习问答会直接列出 DSH 打包的对话卡片，不再需要文件管理器。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('手动选择'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('去授权'),
+              ),
+            ],
+          ),
+        );
+        if (goSettings == true) {
+          await openAppSettings();
+        } else if (context.mounted) {
+          await _pickFile(context);
+        }
         return;
       }
       final dirs = <String>{
@@ -123,10 +142,10 @@ class HomeScreen extends StatelessWidget {
         builder: (sheetContext) => SafeArea(
           child: ListView(
             shrinkWrap: true,
-            padding: const EdgeInsets.only(bottom: 16),
+            padding: const EdgeInsets.fromLTRB(14, 4, 14, 20),
             children: [
               const Padding(
-                padding: EdgeInsets.fromLTRB(20, 4, 20, 8),
+                padding: EdgeInsets.fromLTRB(6, 0, 6, 10),
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: Text(
@@ -136,20 +155,12 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               for (final info in found.take(30))
-                ListTile(
-                  leading: const Icon(Icons.chat_bubble_outline),
-                  title: Text(
-                    info.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  subtitle: Text(
-                    '${info.messages.length} 条消息 · ${_formatStamp(info.modified)}',
-                  ),
-                  onTap: () {
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _packageCard(context, info, () {
                     Navigator.pop(sheetContext);
                     _openPackage(context, info);
-                  },
+                  }),
                 ),
             ],
           ),
@@ -160,6 +171,83 @@ class HomeScreen extends StatelessWidget {
       ScaffoldMessenger.of(context)
           .showSnackBar(SnackBar(content: Text('扫描失败：$error')));
     }
+  }
+
+  Widget _packageCard(
+    BuildContext context,
+    _PackageInfo info,
+    VoidCallback onTap,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerHighest.withOpacity(0.42),
+      borderRadius: BorderRadius.circular(18),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 13, 12, 13),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: scheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(
+                  Icons.chat_bubble_outline,
+                  size: 20,
+                  color: scheme.onSurface,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      info.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      info.preview,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.45,
+                        color: scheme.onSurface.withOpacity(0.55),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${info.messages.length} 条消息 · ${_formatStamp(info.modified)}',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        color: scheme.onSurface.withOpacity(0.4),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.chevron_right,
+                color: scheme.onSurface.withOpacity(0.35),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   String _formatStamp(DateTime time) {
@@ -178,10 +266,15 @@ class HomeScreen extends StatelessWidget {
       final bytes = await file.readAsBytes();
       final parsed = _parsePackage(bytes);
       if (parsed == null) return null;
+      final firstUser = parsed.$2.firstWhere(
+        (message) => message.role == 'user',
+        orElse: () => parsed.$2.first,
+      );
       return _PackageInfo(
         file: file,
         title: parsed.$1,
         messages: parsed.$2,
+        preview: firstUser.text.replaceAll(RegExp(r'\s+'), ' '),
         modified: stat.modified,
       );
     } catch (_) {
@@ -528,11 +621,13 @@ class _PackageInfo {
     required this.file,
     required this.title,
     required this.messages,
+    required this.preview,
     required this.modified,
   });
 
   final File file;
   final String title;
   final List<ChatMessage> messages;
+  final String preview;
   final DateTime modified;
 }
