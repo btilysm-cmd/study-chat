@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../app_state.dart';
@@ -23,6 +27,61 @@ class HomeScreen extends StatelessWidget {
     await state.store.saveConversations(state.conversations);
     if (!context.mounted) return;
     _open(context, conversation);
+  }
+
+  Future<void> _import(BuildContext context) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const ['json'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      var bytes = file.bytes;
+      if (bytes == null && file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      }
+      if (bytes == null) throw const FormatException('读不到文件内容');
+      if (bytes.length > 8 * 1024 * 1024) {
+        throw const FormatException('文件太大（上限 8 MB）');
+      }
+      final doc = jsonDecode(utf8.decode(bytes));
+      if (doc is! Map) throw const FormatException('不是有效的对话包');
+      final rawMessages = doc['messages'];
+      if (rawMessages is! List || rawMessages.isEmpty) {
+        throw const FormatException('对话包里没有消息');
+      }
+      final messages = <ChatMessage>[];
+      for (final item in rawMessages) {
+        if (item is! Map) continue;
+        final role = item['role'] == 'user' ? 'user' : 'assistant';
+        final text = (item['text'] ?? item['content'] ?? '').toString().trim();
+        if (text.isEmpty) continue;
+        messages.add(ChatMessage(role: role, text: text));
+      }
+      if (messages.isEmpty) throw const FormatException('对话包里没有可用文本');
+      final title = (doc['title'] ?? doc['name'] ?? '').toString().trim();
+      final conversation = state.importConversation(
+        title: title.isEmpty
+            ? summarizeTitle(
+                messages
+                    .firstWhere(
+                      (message) => message.role == 'user',
+                      orElse: () => messages.first,
+                    )
+                    .text,
+              )
+            : title,
+        messages: messages,
+      );
+      if (!context.mounted) return;
+      _open(context, conversation);
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('导入失败：$error')));
+    }
   }
 
   void _settings(BuildContext context) {
@@ -58,6 +117,11 @@ class HomeScreen extends StatelessWidget {
                   ),
                   child: Icon(Icons.add, color: scheme.onSurface, size: 22),
                 ),
+              ),
+              IconButton(
+                tooltip: '导入对话',
+                icon: const Icon(Icons.file_download_outlined),
+                onPressed: () => _import(context),
               ),
               IconButton(
                 tooltip: '设置',

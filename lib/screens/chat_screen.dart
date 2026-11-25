@@ -16,6 +16,7 @@ import '../widgets/markdown_theme.dart';
 import '../widgets/rich_text.dart';
 import '../widgets/streaming_text.dart';
 import 'branch_screen.dart';
+import 'mind_map_screen.dart';
 import 'settings_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -380,6 +381,18 @@ class _ChatScreenState extends State<ChatScreen>
     } catch (_) {}
   }
 
+  void _openMindMap(BuildContext context, ChatMessage message) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => MindMapScreen(
+          state: widget.state,
+          conversation: widget.conversation,
+          message: message,
+        ),
+      ),
+    );
+  }
+
   List<Widget> _assistantSlivers(
     BuildContext context,
     ChatMessage message,
@@ -446,6 +459,12 @@ class _ChatScreenState extends State<ChatScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               _action(scheme, Icons.copy_rounded, '复制', () => _copy(message)),
+              _action(
+                scheme,
+                Icons.hub_outlined,
+                '脑图',
+                () => _openMindMap(context, message),
+              ),
               if (message.role == 'assistant' && !message.streaming)
                 _action(
                   scheme,

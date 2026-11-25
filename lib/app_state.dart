@@ -197,6 +197,26 @@ class AppState extends ChangeNotifier {
     unawaited(_persist());
   }
 
+  Conversation importConversation({
+    required String title,
+    required List<ChatMessage> messages,
+    String subject = 'DSH Go',
+  }) {
+    final now = DateTime.now();
+    final conversation = Conversation(
+      id: 'import-${shortId()}',
+      title: title.trim().isEmpty ? '导入的对话' : title.trim(),
+      subject: subject,
+      createdAt: now,
+      updatedAt: now,
+      messages: messages,
+    );
+    conversations.insert(0, conversation);
+    notifyListeners();
+    unawaited(_persist());
+    return conversation;
+  }
+
   Future<void> saveConfig(ApiConfig next) async {
     config = next;
     await store.saveConfig(next);
