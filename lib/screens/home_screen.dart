@@ -312,13 +312,13 @@ class HomeScreen extends StatelessWidget {
 
   Future<void> _pickFile(BuildContext context) async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final files = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: const ['json'],
         withData: true,
       );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.single;
+      if (files.isEmpty) return;
+      final file = files.first;
       var bytes = file.bytes;
       if (bytes == null && file.path != null) {
         bytes = await File(file.path!).readAsBytes();
