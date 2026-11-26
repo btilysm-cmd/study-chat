@@ -318,11 +318,7 @@ class HomeScreen extends StatelessWidget {
       );
       if (files.isEmpty) return;
       final file = files.first;
-      var bytes = file.bytes;
-      if (bytes == null && file.path != null) {
-        bytes = await File(file.path!).readAsBytes();
-      }
-      if (bytes == null) throw const FormatException('读不到文件内容');
+      final bytes = await file.readAsBytes();
       if (bytes.length > 8 * 1024 * 1024) {
         throw const FormatException('文件太大（上限 8 MB）');
       }
